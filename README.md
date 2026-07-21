@@ -83,7 +83,7 @@ the game tools run server-side through an in-process provider. See the
 .
 ├── src/app/
 │   ├── gateway.py room.py room_manager.py provider.py session.py   # MCP + room session surface
-│   ├── game.py world.py fsm.py attributes.py items.py weapons.py objects.py catalog.py
+│   ├── game.py world.py fsm.py classes.py colors.py attributes.py items.py weapons.py objects.py catalog.py
 │   ├── npcs/             # Behavior, LootDrop, EnemySpec + registry (one class per file)
 │   ├── maps/             # SpawnPoint, RenderObject, MapDefinition + loader
 │   ├── entities/         # player, enemy, projectile, food, tree, pickup, coin

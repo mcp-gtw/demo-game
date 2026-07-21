@@ -59,8 +59,9 @@ randomly within `range` cells of the object, up to `max` alive at once. Valid id
 - non-square tiles (`tilewidth` must equal `tileheight` — the engine works in square cells);
 - no tileset, an external `.tsx` tileset, or a tileset missing `columns`/`tilecount`/`firstgid`;
 - an `objects` or `spawns` layer that is not an object group;
-- an object whose Name is not one of the kinds above, missing a required property, carrying a
-  non-numeric `foodCap`/spawn `range`/`max`/coordinate, or placed outside the map bounds.
+- an object whose Name is not one of the kinds above, missing a required property, an `item` object
+  whose `item` is not a catalog id, carrying a non-numeric `foodCap`/spawn `range`/`max`/coordinate, or
+  placed outside the map bounds.
 
 Everything else (solid footprints, the blocked-cell grid, spawn areas) is derived by the loader — you
 only place and name objects in Tiled.

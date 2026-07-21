@@ -39,6 +39,7 @@ in **grid cells** — pixels exist only in the browser.
 | [`world.py`](../src/app/world.py) | The authoritative grid simulation. |
 | [`entities/`](../src/app/entities/) | `player`, `enemy`, `projectile`, `food`, `tree`, `pickup`, `coin`. |
 | [`fsm.py`](../src/app/fsm.py) | The universal `StateMachine` and actor states. |
+| [`classes.py`](../src/app/classes.py), [`colors.py`](../src/app/colors.py) | The playable classes (sprite + weapons) and skin colours a player picks at login. |
 | [`attributes.py`](../src/app/attributes.py), [`items.py`](../src/app/items.py), [`weapons.py`](../src/app/weapons.py), [`npcs/`](../src/app/npcs/) | Stats catalogs and derivation. |
 | [`catalog.py`](../src/app/catalog.py) | The shared source of truth the client reads. |
 | [`maps/`](../src/app/maps/) | `MapDefinition`, `RenderObject`, `SpawnPoint`, the Tiled `load_tiled` loader and `default_map` (reads `web/assets/map/island.tmj`). |

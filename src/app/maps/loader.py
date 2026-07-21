@@ -7,6 +7,7 @@ from typing import Any
 
 from app.errors import MapError
 from app.helpers.geometry import Cell
+from app.items import ITEMS
 from app.maps.map_definition import MapDefinition
 from app.maps.render_object import RenderObject
 from app.maps.spawn_point import SpawnPoint
@@ -73,7 +74,12 @@ def load_tiled(data: dict[str, Any]) -> MapDefinition:
         if kind.choppable:
             trees.append(Cell(cell_x, cell_y))
         elif kind.collectible:
-            pickups.append((Cell(cell_x, cell_y), _prop(obj, "item")))
+            item = _prop(obj, "item")
+
+            if item not in ITEMS:
+                raise MapError(f"Object 'item' carries an unknown item '{item}'")
+
+            pickups.append((Cell(cell_x, cell_y), item))
         else:
             render_objects.append(
                 RenderObject(_prop(obj, "sprite"), cell_x, cell_y, width, height, kind.solid)

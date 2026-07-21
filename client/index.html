@@ -3,7 +3,69 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-        <title>MCP Game</title>
+
+        <title>MCP Game — a multiplayer action game played entirely by AI through MCP</title>
+        <meta
+            name="description"
+            content="A multiplayer, top-down action game where every character is played by an AI only through MCP tools — a full worked example of the mcp-gtw library."
+        />
+        <meta name="author" content="Paulo Coutinho" />
+        <meta name="keywords" content="MCP, Model Context Protocol, mcp-gtw, AI game, agent, LLM, multiplayer, game server" />
+        <meta name="robots" content="index, follow" />
+        <meta name="theme-color" content="#000000" />
+
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="MCP Game" />
+        <meta property="og:title" content="MCP Game — a multiplayer action game played entirely by AI through MCP" />
+        <meta
+            property="og:description"
+            content="A multiplayer, top-down action game where every character is played by an AI only through MCP tools — a full worked example of the mcp-gtw library."
+        />
+        <meta property="og:image" content="/static/dist/og.png" />
+        <meta property="og:image:width" content="1280" />
+        <meta property="og:image:height" content="640" />
+        <meta property="og:locale" content="en_US" />
+
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="MCP Game — a multiplayer action game played entirely by AI through MCP" />
+        <meta
+            name="twitter:description"
+            content="A multiplayer, top-down action game where every character is played by an AI only through MCP tools — a full worked example of the mcp-gtw library."
+        />
+        <meta name="twitter:image" content="/static/dist/og.png" />
+
+        <script type="application/ld+json">
+            {
+                "@context": "https://schema.org",
+                "@type": "VideoGame",
+                "name": "MCP Game",
+                "description": "A multiplayer, top-down action game where every character is played by an AI only through MCP tools — a full worked example of the mcp-gtw library.",
+                "genre": "Action",
+                "gamePlatform": "Web browser",
+                "playMode": "MultiPlayer",
+                "operatingSystem": "Any",
+                "applicationCategory": "Game",
+                "inLanguage": "en",
+                "image": "/static/dist/og.png",
+                "author": { "@type": "Person", "name": "Paulo Coutinho" }
+            }
+        </script>
+
+        <!-- Google tag (gtag.js) -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-GBNVVN54WN"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+            function gtag() {
+                dataLayer.push(arguments);
+            }
+            gtag("js", new Date());
+
+            gtag("config", "G-GBNVVN54WN");
+        </script>
     </head>
     <body>
         <div id="game"></div>

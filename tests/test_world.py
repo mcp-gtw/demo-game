@@ -322,6 +322,12 @@ def test_spawn_scans_for_a_free_cell_when_sampling_misses():
     assert world._spawn_within(0, 0, 0).as_dict() == {"x": 1, "y": 0}
 
 
+def test_spawn_within_avoids_a_collectible_cell():
+    world = World(AppSettings(), make_map(cols=3, rows=1), rng=_StuckRng())
+    world.coins["c"] = Coin("c", Cell(0, 0), 1)
+    assert world._spawn_within(0, 0, 0).as_dict() == {"x": 1, "y": 0}
+
+
 def test_spawn_raises_when_no_cell_is_free():
     full = make_map(cols=2, rows=1, blocked=[(0, 0), (1, 0)])
     world = World(AppSettings(), full, rng=random.Random(1))

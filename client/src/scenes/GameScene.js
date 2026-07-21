@@ -82,6 +82,9 @@ export class GameScene extends Phaser.Scene {
         this.#buildClouds();
         this.music = new Music(this);
         this.debug = new DebugOverlay(this, this.map);
+
+        // stop the track when the scene restarts on a fresh adoption, so music never stacks
+        this.events.once("shutdown", () => this.music.stop());
     }
 
     update(_time, delta) {
@@ -122,6 +125,12 @@ export class GameScene extends Phaser.Scene {
 
         for (const [id, view] of this.views) {
             if (!present.has(id)) {
+                // an enemy is dropped from the snapshot the instant it dies, so show its killing-blow
+                // damage here since no health-zero frame ever arrives
+                if (view.kind === "enemy" && view.lastHealth > 0) {
+                    this.damageNumbers.spawn(view.container.x, view.container.y, view.lastHealth, "#ff5a4a");
+                }
+
                 this.#burst(view.container.x, view.container.y, 0xffe1b0);
                 view.destroy();
                 this.views.delete(id);
@@ -278,6 +287,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     #makeSparkTexture() {
+        if (this.textures.exists("spark")) {
+            return;
+        }
+
         const g = this.make.graphics({ x: 0, y: 0, add: false });
         g.fillStyle(0xffffff, 1).fillCircle(8, 8, 8);
         g.generateTexture("spark", 16, 16);

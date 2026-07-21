@@ -92,6 +92,13 @@ def test_tall_building_caps_its_solid_rows_and_keeps_the_back_walkable():
     assert game_map.is_blocked(0, 2) is True
 
 
+def test_rejects_unknown_item_property():
+    payload = _valid_payload()
+    payload["layers"][1]["objects"] = [_obj("item", 1, 1, props={"item": "sword"})]
+    with pytest.raises(MapError):
+        load_tiled(payload)
+
+
 def test_decoration_renders_without_blocking():
     payload = _valid_payload()
     payload["layers"][1]["objects"].append(_obj("bush", 0, 2, props={"sprite": "bush1"}))

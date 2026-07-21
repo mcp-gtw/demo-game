@@ -17,4 +17,8 @@ export class Music {
         this.sound.setMute(this.muted);
         localStorage.setItem(STORAGE_KEY, this.muted ? "1" : "0");
     }
+
+    stop() {
+        this.sound.destroy();
+    }
 }

@@ -83,10 +83,14 @@ data and draws — it never re-declares game rules or catalogs. **Naming convent
 a file that exports a **class** is `PascalCase` (`GameSocket.js`, `Panel.js`, `EntityView.js`); a file
 that exports **functions or constants** is lowercase (`helpers/format.js`, `constants.js`, `main.js`).
 
-  **Everything the player sees is Phaser** — there is no DOM/CSS interface. `index.html` holds only a
-  `#game` div and `style.css` only makes the app fill the browser (fullscreen, no scroll, no text
-  selection, no margins) plus the `@font-face` for the crisp Roboto text. The landing, the connect
-  windows and the HUD are all Phaser scenes.
+  **Everything the player sees is Phaser** — there is no DOM/CSS interface. The `index.html` body holds
+  only a `#game` div; its `<head>` carries the SEO/social metadata (title, description, Open Graph and
+  Twitter card pointing at `public/og.png`, `application/ld+json` `VideoGame` structured data), the
+  favicon set (`public/favicon.svg` + PNG + apple-touch), and the Google Analytics `gtag` snippet — the
+  one external script the page loads. `style.css` only makes the app fill the browser (fullscreen, no
+  scroll, no text selection, no margins) plus the `@font-face` for the crisp Roboto text. Brand assets in
+  `client/public/` are copied by Vite to `web/dist/` and served under `/static/dist/`. The landing, the
+  connect windows and the HUD are all Phaser scenes.
 
 - `src/main.js` — boot: creates the store and the `GameSocket`, then the Phaser `Game` with `BootScene`
   active and `LoginScene`/`GameScene`/`HudScene` registered but stopped. On MCP login
@@ -163,7 +167,9 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
 - `src/game/Clouds.js` — drifting clouds scattered at random over a bounds rectangle, reassigned a
   random height/size/speed on wrap. In game the bounds are the map plus `CLOUD_MARGIN_CELLS` in world
   space (a depth above the world but below the HUD scene); on the landing the bounds are the screen in a
-  DPR layer under the card. `src/game/Music.js` — the looping background track (mute with **M**).
+  DPR layer under the card. `src/game/Music.js` — the looping background track (mute with **M**); it is
+  stopped on `GameScene` shutdown so a re-adoption restart never stacks a second track. Shared
+  animations and the runtime `spark` texture are created idempotently, so a scene restart is silent.
 - `tests/` — `vitest` unit tests over `helpers` and `net` at 100% coverage (`vitest.config.js` scopes
   the coverage gate to those two directories). The Phaser view classes (scenes, UI kit, `EntityView`,
   `Clouds`) carry no automated tests: they are guarded by the type/build check (`vite build`) and
@@ -217,8 +223,9 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   enforces) is documented in [`docs/maps.md`](docs/maps.md). The loader rejects anything malformed with
   a friendly `MapError`: an infinite map, a missing/external tileset, a wrong-sized `ground`, **non-square
   tiles** (`tilewidth` must equal `tileheight`), an `objects`/`spawns` layer that is not an
-  object group, an unknown object name, a missing or **non-numeric** property (`foodCap`, spawn
-  `range`/`max`, coordinates) and an object placed **out of bounds** — never a raw `KeyError`/`ValueError`.
+  object group, an unknown object name, an `item` object carrying an unknown item id, a missing or
+  **non-numeric** property (`foodCap`, spawn `range`/`max`, coordinates) and an object placed **out of
+  bounds** — never a raw `KeyError`/`ValueError`.
   The `ground` tile layer is an autotiled grass island on water
   (Wang coastline set from `terrain/tileset.png`); `gid 0` is sea. The `objects` object group holds
   the static art, each classified by `objects.py::get_object_kind` (no hardcoded names): `building`/
@@ -319,8 +326,9 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   so an unknown resource fails fast instead of a runtime error when the NPC dies.
 - **Placement never lands on a bad cell** — `_emptiest_spawn`/`_spawn_within` sample for variety but,
   when sampling misses, fall back to a deterministic `_first_free_cell` scan and **raise** if the map is
-  genuinely full rather than returning a blocked or occupied cell. No actor is ever placed inside a wall
-  or on top of another.
+  genuinely full rather than returning a blocked or occupied cell. Both paths reject a cell holding an
+  actor **or a collectible** (food, coin, pickup), so no actor is ever placed inside a wall, on top of
+  another, or on a pickup a player could not then step onto.
 - **Death → respawn + immunity** — `World._kill` / `_resolve_respawns`. On death the server places
   the player at the **emptiest area** (`_emptiest_spawn`, farthest from others) and grants
   `spawn_immunity_seconds` (5s) of blinking immunity; immune players take no damage and are not
@@ -329,7 +337,8 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   (`food_spawn_interval`/`pickup_spawn_interval`/`tree_regrow_seconds` = 120s, each `EnemySpec.respawn_seconds` = 120s), so resources stay scarce.
   A slain enemy is **dropped from the render snapshot** (`World.snapshot` keeps only live enemies), so it
   vanishes with the death burst instead of lingering as a corpse; a dead player stays briefly (dimmed)
-  until it revives.
+  until it revives. Since the enemy leaves the stream the instant it dies, the client shows its
+  killing-blow damage number when the view is removed (`GameScene.#sync`), reading the last-known health.
 - **Shared catalog** — `catalog.py`, sent on the stream handshake (there is no browseable endpoint).
   Client and server share one definition of weapons/items/enemies/limits; the client only reads and
   draws. The map likewise reaches the client only through the stream handshake, never as an endpoint.
@@ -432,7 +441,8 @@ The agent points its MCP client at the `mcpUrl` + `mcpToken` the browser shows i
 ## Visual verification note
 
 The Phaser client is built, syntax-checked and fully served, with correct sprite-frame math derived
-from the real Tiny Swords dimensions (units 192×192/frame, tileset 64px, trees 192×256/frame). It is
+from the real Tiny Swords dimensions (humanoid units 192×192/frame, the lancer 320×320, tileset 64px,
+trees 192×256 or 192×192 per variant). It is
 HiDPI (`Scale.NONE` sized to `window × DPR`, `roundPixels`, world textures at nearest filtering), so it
 adapts to any resolution. The look is verified during development with headless-Chromium smoke runs
 (login → game render → combat → resize, asserting zero console errors), not by committed pixel tests.

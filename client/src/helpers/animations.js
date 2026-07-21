@@ -1,6 +1,10 @@
 import { TREES, UNITS, unitBases } from "../constants.js";
 
 function anim(scene, key, texture, frameRate, repeat) {
+    if (scene.anims.exists(key)) {
+        return;
+    }
+
     scene.anims.create({
         key,
         frames: scene.anims.generateFrameNumbers(texture, {}),

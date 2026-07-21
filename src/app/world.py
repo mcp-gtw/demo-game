@@ -750,7 +750,7 @@ class World:
                 cy + self.rng.randint(-spread, spread),
             )
 
-            if self._entity_at(cell) is None:
+            if self._entity_at(cell) is None and not self._occupied(cell):
                 return cell
 
         return self._first_free_cell()
