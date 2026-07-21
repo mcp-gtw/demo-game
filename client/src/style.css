@@ -1,0 +1,31 @@
+@font-face {
+    font-family: "Roboto";
+    src: url("/static/fonts/roboto.woff2") format("woff2");
+    font-weight: 100 900;
+    font-display: swap;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+    overflow: hidden;
+    background: #2b6a86;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+}
+
+#game {
+    position: fixed;
+    inset: 0;
+}
+
+canvas {
+    display: block;
+}

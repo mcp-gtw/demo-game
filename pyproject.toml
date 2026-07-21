@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-gateway-demo"
+version = "0.0.3"
+description = "A multiplayer, MCP-controlled action game built on top of mcp-gtw."
+requires-python = ">=3.12"
+dependencies = [
+    "mcp-gtw>=0.0.4",
+    "fastapi>=0.139,<1",
+    "pydantic>=2.13,<3",
+    "pydantic-settings>=2.14,<3",
+    "uvicorn[standard]>=0.51,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28,<1",
+    "pytest>=9,<10",
+    "pytest-asyncio>=1.4,<2",
+    "pytest-cov>=7,<8",
+    "ruff>=0.15,<1",
+]
+
+[tool.uv.sources]
+mcp-gtw = { path = "../mcp-server", editable = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    ": \\.\\.\\.$",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "RUF", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "mcp_gtw"]

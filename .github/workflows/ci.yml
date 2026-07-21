@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: mcp-gtw/mcp-gtw
+          path: mcp-server
+      - uses: actions/checkout@v4
+        with:
+          path: mcp-gateway-demo
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install uv
+        run: pip install uv
+      - name: Create the environment
+        working-directory: mcp-gateway-demo
+        run: make install
+      - name: Lint
+        working-directory: mcp-gateway-demo
+        run: make lint
+      - name: Coverage gate
+        working-directory: mcp-gateway-demo
+        run: make coverage

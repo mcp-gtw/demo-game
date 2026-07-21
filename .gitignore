@@ -1,0 +1,24 @@
+# os
+.DS_Store
+
+# python
+__pycache__
+*.egg-info
+.pytest_cache
+.ruff_cache
+.venv
+.coverage
+coverage.xml
+/htmlcov
+
+# node
+node_modules
+
+# env
+.env
+.codex/config.toml
+
+# client build
+client/node_modules/
+src/app/web/dist/
+
