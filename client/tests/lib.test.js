@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { claudeCommand, mcpJson } from "../src/helpers/mcp.js";
+import { claudeCommand, mcpEndpoint, mcpJson } from "../src/helpers/mcp.js";
 import { latencyLevel, statRows, statusLabel, statusLine } from "../src/helpers/format.js";
 import { indexWorld } from "../src/helpers/world.js";
 import { createStore, selfEntity } from "../src/helpers/store.js";
@@ -12,6 +12,12 @@ describe("mcp", () => {
         expect(claudeCommand("http://h/mcp/c", "tok")).toContain('mcp add --transport http mcp-game "http://h/mcp/c"');
         const parsed = JSON.parse(mcpJson("http://h/mcp/c", "tok"));
         expect(parsed.mcpServers["mcp-game"].headers.Authorization).toBe("Bearer tok");
+    });
+
+    it("rebuilds the endpoint on the browser origin, fixing a proxied scheme/host", () => {
+        expect(mcpEndpoint("http://internal/mcp/abc", "https://game.example.dev")).toBe(
+            "https://game.example.dev/mcp/abc",
+        );
     });
 });
 

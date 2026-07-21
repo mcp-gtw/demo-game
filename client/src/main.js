@@ -8,6 +8,7 @@ import { GameScene } from "./scenes/GameScene.js";
 import { HudScene } from "./scenes/HudScene.js";
 import { LoginScene } from "./scenes/LoginScene.js";
 import { createStore } from "./helpers/store.js";
+import { mcpEndpoint } from "./helpers/mcp.js";
 import { indexWorld } from "./helpers/world.js";
 
 const BUFFER_LIMIT = 20;
@@ -77,7 +78,7 @@ function restartGame() {
 const wsScheme = location.protocol === "https:" ? "wss" : "ws";
 const socket = new GameSocket(`${wsScheme}://${location.host}/app/stream`, {
     onSession: (info) => {
-        store.session = info;
+        store.session = { ...info, mcpUrl: mcpEndpoint(info.mcpUrl, location.origin) };
     },
     onLogin: (player) => {
         const readopted = store.phase === "game" && store.playerId !== player.id;

@@ -52,7 +52,8 @@ stats panel is fed by `{type: "me"}` over the same socket.
 - `fsm.py` — the universal `StateMachine` and the actor states/transitions.
 - `attributes.py`, `items.py`, `weapons.py` — stats catalogs and derivation. `classes.py` — `ClassSpec`
   and `CLASSES` (warrior/archer/monk/lancer): the sprite and starting weapons each playable class spawns
-  with, resolved by `get_class` at login.
+  with, resolved by `get_class` at login. `colors.py` — `PLAYER_COLORS` (blue/yellow/purple/black) and
+  `get_color`: the faction skin a player picks at login (enemies always render red).
 - `objects.py` — `ObjectKind`: the shared map-object catalog (`solid`/`choppable`/`collectible`) the map
   loader classifies against and the client reads via the catalog, so a new object type is one entry.
 - `npcs/` — the NPC catalog, one class per file: `behavior.py` (`Behavior` = aggressive/skittish/wander),
@@ -94,8 +95,9 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   updates `store.playerId` and restarts the game + HUD scenes so the camera and HUD re-bind to the new
   character instead of following a stale one.
 - `src/scenes/BootScene.js` — shows the `LoadingWindow` and loads **every static asset once** (all
-  texture manifests, the per-unit spritesheets from the `UNITS` catalog, the tree/foam sheets and the
-  music) so no scene reloads a shared key, then starts `LoginScene`. Only the tileset and item icons
+  texture manifests, the per-unit spritesheets from the `UNITS` catalog — one set per faction colour for
+  the coloured classes, via `unitBases` — the tree/foam sheets and the music) so no scene reloads a
+  shared key, then starts `LoginScene`. Only the tileset and item icons
   stay dynamic in `GameScene` (their paths arrive with the map and catalog). Scenes that listen for
   `resize` remove the listener on `shutdown`, so a stopped scene never lays out a torn-down nine-slice.
 - `src/ui/LoadingWindow.js` — the loading screen drawn entirely with graphics + text (no preloaded
@@ -106,7 +108,10 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   (one entry per unit sprite — `warrior`, `archer`, `monk`, `lancer`, `sheep`; a player renders as its
   class sprite, an enemy as its `EnemySpec.sprite`) carrying the spritesheet frame size, on-screen scale,
   the vertical `originY` (so the unit stands on its cell), and the idle/run/attack frame rates — the
-  sheep animates slower than the humanoids and has no attack. `TREES` lists the four choppable-tree
+  sheep animates slower than the humanoids and has no attack. The four humanoid classes are `colored`,
+  shipping one spritesheet set per faction under `assets/units/<unit>/<color>/`; `UNIT_COLORS`
+  (blue/yellow/purple/black/red) and `unitBases` build the per-colour texture keys, so a player draws in
+  its chosen colour and an enemy in `ENEMY_COLOR` (red). `TREES` lists the four choppable-tree
   variants (frame size, scale, origin) picked per tree by its cell. Plus the resource icon map. A
   component's own private layout numbers stay in the component.
 - `src/helpers/` — pure functions (no Phaser/canvas): `mcp` (connect snippets), `format`, `clipboard`,
@@ -144,9 +149,12 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   Tools — each opening a `Window` explaining it with a Copy button where it helps. The whole card is
   **responsive**: it caps at 440 logical px but shrinks to the screen width, the text word-wraps and the
   buttons resize to fit, so it never clips on a narrow or portrait viewport.
-- `src/game/EntityView.js` — one on-screen entity (sprite, name tag, health bar, speech bubble). The
-  name tag and speech bubble sit close above the sprite. A drop in `health` (or a tree's `hits`)
-  triggers a single quick red fill-tint flash, and projectiles leave a short fading golden trail.
+- `src/game/EntityView.js` — one on-screen entity (sprite, name tag, health bar, speech bubble). It
+  picks the per-faction texture (`#textureBase`: the player's colour, or red for enemies) and **walks
+  actors smoothly** toward their cell over `moveMs`, snapping only on a respawn-sized jump. The name tag
+  and speech bubble sit close above the sprite; a fresh collectible (loot, respawned pickup) **hops in**.
+  A drop in `health` (or a tree's `hits`) triggers a single quick red fill-tint flash, and projectiles
+  leave a short fading golden trail.
 - `src/game/DamageNumbers.js` — floating combat numbers: each hit spawns the amount taken, rising and
   fading in a random direction so overlapping hits fan out.
 - `src/game/DebugOverlay.js` — a togglable overlay (press **B**) drawing the Tiled cell grid, the
@@ -165,15 +173,17 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
 
 Every rule is enforced on the server. This is the index so nothing is duplicated or lost:
 
-- **Login + class** — the `login` MCP tool → `provider.py::LocalProvider._login` → `game.py::GameService.login`.
+- **Login + class + color** — the `login` MCP tool → `provider.py::LocalProvider._login` → `game.py::GameService.login`.
   Name must match `^[A-Za-z0-9_-]+$`, ≤ `name_max_length` (32), and be unique among live players, else
   a friendly `CommandError`. Login also takes an optional **`class`** (`classes.py::CLASSES`: warrior,
   archer, monk, lancer — defaults to `warrior`); `world.add_player` resolves it via `get_class` and the
   `ClassSpec` sets the player's `sprite` and starting `weapons` (warrior→sword, archer→bow, monk→staff,
-  lancer→spear). An unknown class is a friendly `CommandError`. Success spawns the player and the
+  lancer→spear). It also takes an optional **`color`** (`colors.py::PLAYER_COLORS`: blue, yellow, purple,
+  black — defaults to `blue`, resolved by `get_color`), the player's faction skin; enemies always render
+  red. An unknown class or color is a friendly `CommandError`. Success spawns the player and the
   session adopts it. Each session may log in once (a second login is rejected). There is no logout tool —
-  leaving is by disconnecting. The chosen class rides `get_player` as `class` and the render snapshot as
-  `sprite`, so the browser draws the right unit.
+  leaving is by disconnecting. The chosen class and color ride `get_player` and the render snapshot
+  (`sprite` + `color`), so the browser draws the right unit in the right colour.
 - **Persistent identity (client-supplied token)** — `gateway.py`. The browser mints a `crypto.randomUUID`
   once, stores it in `localStorage` (`mcp-game-token`) and connects `/app/stream` with `?token=<uuid>`.
   The server validates the UUID and derives a **deterministic** `channel_id = sha256(token)[:16]` and
@@ -216,11 +226,13 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   2×2, 4×3, …), `bush` is a non-solid decoration, `tree` is choppable and `item` is collectible (carries
   an `item` property). The client renders `ground` + `objects` from the stream and reads the same object
   flags from the catalog; the server keeps only the derived blocked-cell grid.
-- **Collision (tile-based)** — `MapDefinition.is_blocked` is true for sea tiles, any cell inside a
-  solid object footprint, and out-of-bounds. `World._blocked` adds standing trees. The server walks
-  cell by cell — since positions are authoritative integer cells, a shape (square, rectangle or circle)
-  is just the **set of cells it covers**, so a footprint is `w×h` cells. The island map includes a
-  rock-**walled reserved enclosure** (a hollow rectangle of solid rocks with a one-cell gate) so a
+- **Collision (tile-based)** — `MapDefinition.is_blocked` is true for sea tiles, a solid object's
+  blocked cells, and out-of-bounds. `World._blocked` adds standing trees. The server walks cell by cell —
+  since positions are authoritative integer cells, a shape is just the **set of cells it covers**. A
+  solid blocks only its bottom rows (its base), capped at `loader.py::SOLID_DEPTH` (**2**), so a taller
+  building (the 4×3 castle) keeps its **back row walkable** and an actor can pass behind it and be
+  occluded by the sprite for depth; a 1–2 row solid (rocks, houses) blocks fully. The island map includes
+  a rock-**walled reserved enclosure** (a hollow rectangle of solid rocks with a one-cell gate) so a
   player has to route through the opening to enter — the collision system alone enforces it.
 - **Actor collision** — `World._occupied_by_actor(cell, mover)` is true when any other alive player or
   enemy stands on `cell`. `move` (and `_enemy_move`) refuse a target that is blocked **or** occupied,
@@ -247,7 +259,10 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   weapon (only the archer carries one). The `weapons` tool lists what a player carries.
 - **Attributes + items** — `attributes.py` + `items.py`. Base stats from `config.py`; carried items
   change max health, move duration (speed), vision range and attack speed (attacking duration).
-  Items are collected by stepping onto them (`World._collect_at`).
+  Collectibles (food, coins, items) are picked up by stepping onto their cell: `move` runs
+  `World._collect_at` for immediate feedback, and each tick `World._resolve_pickups` sweeps up
+  **everything** a standing player sits on, so loot dropped under its feet or a coin left under a
+  collected food is still taken without another step.
 - **Vision + wave** — vision range is a cell radius (attributes). `look_around` returns visible
   objects within range plus a four-direction scan, and increments `vision_pulse_seq` so the client
   draws the wave **only when the agent looks**. Other players' items and vision range are **private**
@@ -294,9 +309,10 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   `Projectile`); **skittish** flees when a player is within `flee_range` and otherwise wanders;
   **wander** roams on `wander_chance`. `flee_when_attacked` NPCs are spooked for `spook_seconds` on a hit
   (`_damage`) and flee regardless of profile. Enemies move slower than players and hit softly. The
-  warrior/archer are aggressive; the three **sheep** animals (`sheep_shy` skittish, `sheep_flighty`
-  spooked-and-flees, `sheep_calm` just wanders) share the `enemy_sheep` sprite via `EnemySpec.sprite`
-  and drop food, gold or items — a new animal is one `EnemySpec` entry plus its spawn point.
+  four combat NPCs (`enemy_warrior`, `enemy_archer`, `enemy_lancer`, `enemy_monk`) are aggressive and
+  render red via `EnemySpec.sprite` (warrior/archer/lancer/monk); the three **sheep** animals
+  (`sheep_shy` skittish, `sheep_flighty` spooked-and-flees, `sheep_calm` just wanders) share the `sheep`
+  sprite and drop food, gold or items — a new enemy or animal is one `EnemySpec` entry plus its spawn point.
 - **Loot** — `World._drop_loot` rolls each `EnemySpec.loot` `LootDrop`: `food` drops a `Food` where the
   NPC fell, an item id (in `ITEMS`) drops a `Pickup`, anything else (gold) drops a `Coin` to walk onto.
   `npcs/registry.py` validates every loot `resource` against `{food} ∪ ITEMS ∪ RESOURCE_KINDS` at import,
@@ -311,13 +327,18 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   targeted. The **player revives quickly** (`respawn_delay_seconds`, 3s) — it is the one exception:
   every other world respawn (food, roaming pickups, felled trees, NPCs) is **≥ 2 minutes**
   (`food_spawn_interval`/`pickup_spawn_interval`/`tree_regrow_seconds` = 120s, each `EnemySpec.respawn_seconds` = 120s), so resources stay scarce.
+  A slain enemy is **dropped from the render snapshot** (`World.snapshot` keeps only live enemies), so it
+  vanishes with the death burst instead of lingering as a corpse; a dead player stays briefly (dimmed)
+  until it revives.
 - **Shared catalog** — `catalog.py`, sent on the stream handshake (there is no browseable endpoint).
   Client and server share one definition of weapons/items/enemies/limits; the client only reads and
   draws. The map likewise reaches the client only through the stream handshake, never as an endpoint.
 - **Depth/Y-sort, interpolation, camera** — client responsibilities; `helpers/interpolate.js` renders
-  ~120 ms in the past and lerps each entity between the two surrounding snapshots (snapping when the
-  jump is **more than 2 cells**, i.e. a respawn, while a 1–2 cell catch-up still slides), and
-  `visionPulseSeq`/`speech`/`immune` drive effects. `EntityView.#depth` y-sorts actors and standing
+  ~120 ms in the past and lerps projectiles and collectibles between the two surrounding snapshots.
+  **Actors (players, enemies) instead walk smoothly** toward their authoritative cell over the per-step
+  duration the snapshot carries (`moveMs` = the server's move/speed duration), so a slow enemy slides
+  between tiles instead of popping; a jump of **more than 2 cells** (a respawn) snaps. `visionPulseSeq`/
+  `speech`/`immune` drive effects. `EntityView.#depth` y-sorts actors and standing
   objects by their base, projectiles above, and **collectibles (food, items) in a band strictly below
   every actor** (`py - groundBand`, still above the ground), so a pickup a unit stands on always draws
   under it. Nothing the client draws is authoritative.

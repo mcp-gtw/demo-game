@@ -1,5 +1,7 @@
 .DEFAULT_GOAL := help
-.PHONY: help install client client-install client-test lint format test coverage run
+.PHONY: help install client client-install client-test lint format test coverage run docker-build docker-run
+
+IMAGE ?= mcp-gateway-demo:latest
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -34,3 +36,9 @@ coverage: client ## Run the python and client suites with their coverage gates
 
 run: client ## Serve the game on 127.0.0.1:8000
 	uv run python -m app.main
+
+docker-build: ## Build the Docker image (override IMAGE=...)
+	docker build -t $(IMAGE) .
+
+docker-run: docker-build ## Build then run the image, serving on 127.0.0.1:8000
+	docker run --rm -p 8000:8000 $(IMAGE)

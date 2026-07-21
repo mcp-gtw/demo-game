@@ -38,7 +38,8 @@ make run            # build the client, then serve everything on http://127.0.0.
 ```
 
 Open <http://127.0.0.1:8000>, copy the shared MCP URL and token, and point your MCP client at it.
-Call `login` with a name, then play. Open <http://127.0.0.1:8000/?gallery> to see the
+Call `login` with a name (optionally a class — warrior/archer/monk/lancer — and a skin color —
+blue/yellow/purple/black; enemies are always red), then play. Open <http://127.0.0.1:8000/?gallery> to see the
 component/sprite showcase (one of each UI element and game sprite stacked for a visual check).
 
 ```bash

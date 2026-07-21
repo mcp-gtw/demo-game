@@ -20,11 +20,12 @@ browser socket ── session (mcp url+token) ──► agent connects, calls lo
       └── login, catalog, map, snapshots, me ◄── provider adopts the player
 ```
 
-`login(name, class?)` binds your character to the session you connected through, so every other tool
-acts as that player with no argument. Pick a `class` — warrior (sword), archer (bow), monk (staff) or
-lancer (spear, two-cell reach); it defaults to warrior and sets your sprite and starting weapon. There
-is no browser login form, so a player is created exactly once per session. The server reasons only in
-**grid cells** — pixels exist only in the browser.
+`login(name, class?, color?)` binds your character to the session you connected through, so every other
+tool acts as that player with no argument. Pick a `class` — warrior (sword), archer (bow), monk (staff)
+or lancer (spear, two-cell reach); it defaults to warrior and sets your sprite and starting weapon. Pick
+a `color` for your skin — blue, yellow, purple or black (defaults to blue); enemies always render red.
+There is no browser login form, so a player is created exactly once per session. The server reasons only
+in **grid cells** — pixels exist only in the browser.
 
 ## Modules
 
@@ -50,7 +51,7 @@ once, then act.
 
 | Tool | Arguments | Effect |
 | --- | --- | --- |
-| `login` | `name`, `class?` | Join and spawn. Name `^[A-Za-z0-9_-]+$`, ≤32, unique. Class warrior/archer/monk/lancer (default warrior). Once per session. |
+| `login` | `name`, `class?`, `color?` | Join and spawn. Name `^[A-Za-z0-9_-]+$`, ≤32, unique. Class warrior/archer/monk/lancer (default warrior). Color blue/yellow/purple/black (default blue); enemies are red. Once per session. |
 | `get_player` | — | Full private state: position, state, health, items, weapons, attributes. |
 | `look_around` | — | Visible objects within vision + a four-direction scan; emits the vision wave. |
 | `search_around` | `type` | Nearest matches of one kind: player, enemy, food, item, coin, tree. |
@@ -70,8 +71,9 @@ Gameplay outcomes are values, not errors — an out-of-range attack returns
 ## The world
 
 The simulation advances at `APP_TICK_RATE` Hz. Each tick resolves finished action states, advances
-projectiles, runs enemy AI, respawns the dead, regrows trees and tops food back up to the map cap.
-Full rules and the module that owns each are indexed in [CLAUDE.md](../CLAUDE.md).
+projectiles, runs enemy AI, respawns the dead, sweeps up collectibles under standing players, regrows
+trees and tops food back up to the map cap. Full rules and the module that owns each are indexed in
+[CLAUDE.md](../CLAUDE.md).
 
 ## The map and the client
 
@@ -79,8 +81,9 @@ The world is a real **Tiled** map (`web/assets/map/island.tmj`, 80×56 at 64px).
 `ground` tile layer (an autotiled grass island on sea, `gid 0` = water), the `objects` group
 (`building`/`rock` solids with a `sprite` property and a configurable square **footprint** in cells,
 plus `tree` and `item`) and the `spawns` group (NPC origins). The server derives a blocked-cell grid;
-`is_blocked` refuses sea, footprints and out-of-bounds — no shapes. The map reaches the client only on
-the stream handshake.
+`is_blocked` refuses sea, out-of-bounds and a solid's **base** — a solid blocks only its bottom rows
+(capped at 2), so a taller building keeps its back row walkable and actors pass behind it for depth. The
+map reaches the client only on the stream handshake.
 
 The browser client is a component-based **Vite** project under `client/` (one class per file), built
 into `web/dist`. `GameScene` lays the sea as a water `TileSprite`, builds a tilemap from the ground

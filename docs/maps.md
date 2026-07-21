@@ -35,14 +35,14 @@ its Class) selects what it is.
 
 | Name | Behaviour | Required property |
 | --- | --- | --- |
-| `building` | solid, footprint = the rectangle's width×height in cells | `sprite` |
+| `building` | solid; the rectangle is its width×height footprint, but collision blocks only its bottom rows (capped at 2), so a taller building's back row stays walkable (pass behind) | `sprite` |
 | `rock` | solid | `sprite` |
 | `bush` | decoration, non-solid | `sprite` |
 | `tree` | choppable | — |
 | `item` | collectible (step on it to pick up) | `item` |
 
-- `sprite` (string) — one of: `castle`, `house`, `tower`, `rock1`, `rock2`, `bush1`, `bush2`, `bush3`,
-  `bush4`.
+- `sprite` (string) — one of: `castle`, `house`, `tower`, `rock1`, `rock2`, `rock3`, `rock4`, `bush1`,
+  `bush2`, `bush3`, `bush4`.
 - `item` (string) — one of the catalog ids: `heart`, `boots`, `spyglass`, `gauntlet`.
 
 An unknown Name or a missing property fails with a `MapError` naming the offending object.
@@ -51,7 +51,7 @@ An unknown Name or a missing property fails with a `MapError` naming the offendi
 
 Each object's **Name** is the enemy id, with properties `range` (int) and `max` (int): NPCs spawn
 randomly within `range` cells of the object, up to `max` alive at once. Valid ids: `enemy_warrior`,
-`enemy_archer`, `sheep_shy`, `sheep_flighty`, `sheep_calm`.
+`enemy_archer`, `enemy_lancer`, `enemy_monk`, `sheep_shy`, `sheep_flighty`, `sheep_calm`.
 
 ## What the loader rejects (each with a friendly `MapError`)
 
