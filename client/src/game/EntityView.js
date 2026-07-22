@@ -6,6 +6,12 @@ import { ENEMY_COLOR, TEXT_DPR, TREES, UNITS } from "../constants.js";
 // a jump beyond this many cells is a teleport (respawn), so the sprite snaps instead of sliding
 const TELEPORT_CELLS = 2;
 
+// vertical offsets in tiles for the labels above a unit, stacked so they never overlap: the health
+// bar sits just above the head, the name above the bar, the speech bubble above the name
+const BAR_OFFSET = -1.15;
+const NAME_OFFSET = -1.45;
+const BUBBLE_OFFSET = -1.9;
+
 // one on-screen entity: a container holding its animated body plus a name tag, health bar and
 // speech bubble. It owns nothing but drawing, reading each frame's interpolated entity data.
 export class EntityView {
@@ -49,7 +55,7 @@ export class EntityView {
 
         if (entity.kind === "player") {
             const own = entity.id === this.playerId;
-            const name = this.scene.add.text(0, -this.tile * 1.15, entity.name, {
+            const name = this.scene.add.text(0, this.tile * NAME_OFFSET, entity.name, {
                 fontFamily: "Roboto, sans-serif",
                 fontSize: "16px",
                 fontStyle: "700",
@@ -239,7 +245,7 @@ export class EntityView {
 
         const width = this.tile * 0.9;
         const ratio = healthRatio(entity.health, entity.maxHealth);
-        const y = -this.tile * 1.4;
+        const y = this.tile * BAR_OFFSET;
         bar.fillStyle(0x10152b, 0.85).fillRect(-width / 2, y, width, 6);
         bar.fillStyle(entity.kind === "player" ? 0x62c462 : 0xe06a5a, 1);
         bar.fillRect(-width / 2, y, width * ratio, 6);
@@ -257,7 +263,7 @@ export class EntityView {
         }
 
         this.extras.bubble?.destroy();
-        const text = this.scene.add.text(0, -this.tile * 1.7, entity.speech, {
+        const text = this.scene.add.text(0, this.tile * BUBBLE_OFFSET, entity.speech, {
             fontFamily: "Roboto, sans-serif",
             fontSize: "12px",
             color: "#3a2a14",

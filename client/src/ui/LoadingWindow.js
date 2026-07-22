@@ -33,6 +33,26 @@ export class LoadingWindow {
         this.#render();
     }
 
+    // swap to an error state when an asset fails to load, so a broken UI is never shown: a message and
+    // a Reload button that fetches everything again
+    showReload() {
+        this.failed = true;
+        this.bar.setVisible(false);
+        this.title.setText("Couldn't load the game");
+        this.hint = this.scene.add
+            .text(0, 0, "Some assets failed to load.", { fontFamily: "Roboto, sans-serif", fontSize: "14px", color: INK })
+            .setOrigin(0.5)
+            .setResolution(TEXT_DPR);
+        this.reload = this.scene.add
+            .text(0, 0, "↻  Reload", { fontFamily: "Roboto, sans-serif", fontSize: "20px", fontStyle: "800", color: "#7a1f14" })
+            .setOrigin(0.5)
+            .setResolution(TEXT_DPR)
+            .setInteractive({ useHandCursor: true })
+            .on("pointerup", () => location.reload());
+        this.layer.add([this.hint, this.reload]);
+        this.#render();
+    }
+
     #render() {
         const width = this.scene.scale.gameSize.width / DPR;
         const height = this.scene.scale.gameSize.height / DPR;
@@ -43,8 +63,15 @@ export class LoadingWindow {
         this.panel.fillStyle(0x2b6a86, 1).fillRect(0, 0, width, height);
         this.panel.fillStyle(0xefe0c0, 1).fillRoundedRect(x, y, PANEL_W, PANEL_H, 14);
         this.panel.lineStyle(4, 0x2a1d10, 1).strokeRoundedRect(x, y, PANEL_W, PANEL_H, 14);
-        this.title.setPosition(width / 2, y + 44);
 
+        if (this.failed) {
+            this.title.setPosition(width / 2, y + 38);
+            this.hint.setPosition(width / 2, y + 70);
+            this.reload.setPosition(width / 2, y + 100);
+            return;
+        }
+
+        this.title.setPosition(width / 2, y + 44);
         const barX = x + 30;
         const barY = y + 80;
         const barW = PANEL_W - 60;

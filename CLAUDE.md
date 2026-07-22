@@ -93,20 +93,27 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   connect windows and the HUD are all Phaser scenes.
 
 - `src/main.js` — boot: creates the store and the `GameSocket`, then the Phaser `Game` with `BootScene`
-  active and `LoginScene`/`GameScene`/`HudScene` registered but stopped. On MCP login
-  (`store.phase = "game"`, once catalog + map arrived) it starts game + HUD and stops the login. If a
-  reconnect **after the grace** adopts a fresh player (a new id while already in game), `onLogin`
-  updates `store.playerId` and restarts the game + HUD scenes so the camera and HUD re-bind to the new
-  character instead of following a stale one.
+  active and `LoginScene`/`GameScene`/`HudScene` registered but stopped. `enterGame` is **gated on a
+  `booted` flag** and on catalog + map — so the socket can connect and receive `login`/`catalog`/`map`
+  during asset load without racing the game in before the assets exist. `BootScene` calls back
+  `onBoot` when loading finishes: if login already resumed during boot it drops **straight into the
+  game** (a reload that resumes an in-game session never gets stuck on the landing), otherwise it shows
+  the landing and the later `login`/`catalog`/`map` transition it. If a reconnect **after the grace**
+  adopts a fresh player (a new id while already in game), `onLogin` updates `store.playerId` and
+  restarts the game + HUD scenes so the camera and HUD re-bind to the new character.
 - `src/scenes/BootScene.js` — shows the `LoadingWindow` and loads **every static asset once** (all
   texture manifests, the per-unit spritesheets from the `UNITS` catalog — one set per faction colour for
   the coloured classes, via `unitBases` — the tree/foam sheets and the music) so no scene reloads a
-  shared key, then starts `LoginScene`. Only the tileset and item icons
+  shared key, then routes: gallery when requested, straight into the game if login already resumed
+  during boot (via `onReady`), else the `LoginScene`. Every asset is part of the game, so **any**
+  `loaderror` is fatal: `create` shows the `LoadingWindow` reload prompt instead of proceeding, so a
+  failed load (a missing texture, the music, anything) never yields a broken, background-less UI. Only the tileset and item icons
   stay dynamic in `GameScene` (their paths arrive with the map and catalog). Scenes that listen for
   `resize` remove the listener on `shutdown`, so a stopped scene never lays out a torn-down nine-slice.
-- `src/ui/LoadingWindow.js` — the loading screen drawn entirely with graphics + text (no preloaded
-  texture): a parchment panel, a `Loading… N%` label and a progress bar fed by the loader's `progress`
-  event. It removes itself when BootScene shuts down.
+- `src/ui/LoadingWindow.js` — the loading screen drawn entirely with graphics + text (**no preloaded
+  texture, so it renders even when assets fail**): a parchment panel, a `Loading… N%` label and a
+  progress bar fed by the loader's `progress` event, plus a `showReload` error state (message + a
+  Reload button that refetches everything) for a failed load. It removes itself when BootScene shuts down.
 - `src/constants.js` — shared constants: ui theme (colours, ink, panel border, text dpr), the texture
   manifests (`MENU_TEXTURES`, `WORLD_TEXTURES`, `OBJECT_TEXTURES`, `HUD_TEXTURES`), the `UNITS` catalog
   (one entry per unit sprite — `warrior`, `archer`, `monk`, `lancer`, `sheep`; a player renders as its
@@ -145,8 +152,9 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   world → HUD.
 - `src/scenes/GalleryScene.js` — a scrollable showcase reachable at **`/?gallery`** rendering one of
   each element stacked vertically (Label, TextButton, Button, HealthBar, Panel, the player idle/run/
-  attack cycle, the sheep, a tree, the arrow projectile with trail and a particle burst), so every
-  component and sprite can be eyeballed at a glance.
+  attack cycle, the sheep, a tree, the arrow projectile with trail and a particle burst, plus a real
+  `EntityView` **player card** with its name tag and partial health bar so the label stacking can be
+  verified), so every component and sprite can be eyeballed at a glance.
 - `src/scenes/LoginScene.js` — the Phaser landing: the Tiny Swords sky background (`ui/login_bg.png`)
   cover-fit, drifting `Clouds`, and a parchment card (title, online count, status). Pressing **Login**
   (enabled once the session arrives) reveals three option buttons — Claude Code (CLI), MCP config, and
@@ -155,10 +163,11 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   buttons resize to fit, so it never clips on a narrow or portrait viewport.
 - `src/game/EntityView.js` — one on-screen entity (sprite, name tag, health bar, speech bubble). It
   picks the per-faction texture (`#textureBase`: the player's colour, or red for enemies) and **walks
-  actors smoothly** toward their cell over `moveMs`, snapping only on a respawn-sized jump. The name tag
-  and speech bubble sit close above the sprite; a fresh collectible (loot, respawned pickup) **hops in**.
-  A drop in `health` (or a tree's `hits`) triggers a single quick red fill-tint flash, and projectiles
-  leave a short fading golden trail.
+  actors smoothly** toward their cell over `moveMs`, snapping only on a respawn-sized jump. The labels
+  **stack above the head without overlapping** (`BAR_OFFSET` < `NAME_OFFSET` < `BUBBLE_OFFSET`): the
+  health bar just above the head, the name above the bar, the speech bubble above the name; a fresh
+  collectible (loot, respawned pickup) **hops in**. A drop in `health` (or a tree's `hits`) triggers a
+  single quick red fill-tint flash, and projectiles leave a short fading golden trail.
 - `src/game/DamageNumbers.js` — floating combat numbers: each hit spawns the amount taken, rising and
   fading in a random direction so overlapping hits fan out.
 - `src/game/DebugOverlay.js` — a togglable overlay (press **B**) drawing the Tiled cell grid, the
@@ -357,8 +366,10 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   `FOAM.offset` (`#landDirection`) and drawn **below** the ground tilemap, so the grass tucks over its
   inner part and only a thin sea-side rim shows — a foam line hugging the coast (the `FOAM` constant
   tunes scale/offset/alpha in one place, shared with the gallery). It builds a Phaser tilemap
-  from `map.ground` + `tileset.png`, and places the `map.objects` sprites Y-sorted by their base so
-  units pass in front/behind. Choppable trees render one of four **variants** (`TREES`, chosen per tree
+  from `map.ground` + `tileset.png`, and places the `map.objects` sprites: **solid** objects (buildings,
+  rocks) Y-sorted by their base so units pass in front/behind, while **flat decorations** (non-solid
+  bushes) render in the `GROUND_DECOR_DEPTH` band — above the ground tilemap but below every actor — so a
+  unit standing on one is never covered by it. Choppable trees render one of four **variants** (`TREES`, chosen per tree
   by its cell) and rock objects use four sprites, so forests and shores look varied. Drifting `Clouds` live in
   a world-space layer over the map (map bounds plus `CLOUD_MARGIN_CELLS`), each cloud reassigned a
   random height/size/speed when it wraps, above the world yet below the HUD scene. The renderer is

@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { buildAnimations } from "../helpers/animations.js";
 import { Button } from "../ui/Button.js";
 import { DPR, FOAM, FOAM_FRAME, INK, TEXT_DPR } from "../constants.js";
+import { EntityView } from "../game/EntityView.js";
 import { HealthBar } from "../ui/HealthBar.js";
 import { Panel } from "../ui/Panel.js";
 import { TextButton } from "../ui/TextButton.js";
@@ -24,6 +25,11 @@ export class GalleryScene extends Phaser.Scene {
         this.layer = this.add.container(0, 0).setScale(DPR);
         this.y = 40;
 
+        // minimal scene context so a real EntityView can be rendered in the player-card showcase
+        this.playerId = "hero";
+        this.map = { rows: 12 };
+        this.enemySprites = {};
+
         this.#caption("Label", () => this.#label("The quick brown fox", "22px"));
         this.#caption("TextButton", () => this.layer.add(new TextButton(this, { text: "Press me" }).setPosition(ITEM_X + 70, this.y).root));
         this.#caption("Icon Button", () => this.layer.add(new Button(this, { icon: "icon_stats" }).setPosition(ITEM_X + 30, this.y).root));
@@ -35,6 +41,7 @@ export class GalleryScene extends Phaser.Scene {
         this.#caption("Lancer (black) idle/run/attack", () => this.#unitCycle("black_lancer"));
         this.#caption("Enemy warrior (red) idle/run/attack", () => this.#unitCycle("red_warrior"));
         this.#caption("Sheep idle", () => this.#unit("sheep", "idle"));
+        this.#playerCardRow();
         this.#caption("Tree", () => this.#tree());
         this.#caption("Projectile + trail", () => this.#arrow());
         this.#caption("Particles", () => this.#particles());
@@ -77,6 +84,23 @@ export class GalleryScene extends Phaser.Scene {
         const sprite = this.add.sprite(ITEM_X + 40, this.y, `${key}_idle`).play(`${key}_${state}`);
         this.layer.add(sprite);
         return sprite;
+    }
+
+    #playerCardRow() {
+        // a real EntityView (name tag + partial health bar) so the label layout can be eyeballed
+        this.y += 80;
+        this.#label("Player name + health bar", "15px", LABEL_X, "#dfeefc");
+
+        const hero = {
+            id: "hero", kind: "player", name: "Hero", sprite: "warrior", color: "blue",
+            state: "idle", facing: "down", health: 62, maxHealth: 100, alive: true, immune: false,
+            position: { x: 0, y: 0 }, moveMs: 280, speech: null, visionRange: null, visionPulseSeq: 0,
+        };
+        const view = new EntityView(this, hero, 56, this.playerId);
+        view.update(hero, this.time.now, 16);
+        view.container.setPosition(ITEM_X + 60, this.y);
+        this.layer.add(view.container);
+        this.y += 130;
     }
 
     #unitCycle(key) {

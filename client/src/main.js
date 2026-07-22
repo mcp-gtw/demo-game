@@ -16,6 +16,7 @@ const BUFFER_LIMIT = 20;
 const store = createStore();
 let game = null;
 let started = false;
+let booted = false;
 
 async function loadFonts() {
     if (!document.fonts) {
@@ -41,7 +42,8 @@ function bootGame() {
     game.scene.add("hud", HudScene, false);
     game.scene.add("login", LoginScene, false);
     game.scene.add("gallery", GalleryScene, false);
-    game.scene.add("boot", BootScene, true, { store, gallery: new URLSearchParams(location.search).has("gallery") });
+    const gallery = new URLSearchParams(location.search).has("gallery");
+    game.scene.add("boot", BootScene, true, { store, gallery, onReady: onBoot });
 
     const applyCss = () => {
         game.canvas.style.width = `${window.innerWidth}px`;
@@ -59,15 +61,24 @@ function bootGame() {
     });
 }
 
+// enter the game only once the assets have booted and login, catalog and map have all arrived, so a
+// reload that resumes an already-logged-in session never races the boot into showing a stale landing
 function enterGame() {
-    if (started || store.phase !== "game" || !store.catalog || !store.map) {
-        return;
+    if (started || !booted || store.phase !== "game" || !store.catalog || !store.map) {
+        return false;
     }
 
     started = true;
     game.scene.start("game", { store });
     game.scene.start("hud", { store });
     game.scene.stop("login");
+    game.scene.stop("boot");
+    return true;
+}
+
+function onBoot() {
+    booted = true;
+    return enterGame();
 }
 
 function restartGame() {

@@ -21,11 +21,18 @@ export class BootScene extends Phaser.Scene {
     init(data) {
         this.store = data.store;
         this.gallery = data.gallery;
+        this.onReady = data.onReady;
     }
 
     preload() {
         this.loading = new LoadingWindow(this);
         this.load.on("progress", (value) => this.loading.update(value));
+
+        // every asset is part of the game, so any failed load is fatal and prompts a reload
+        this.load.on("loaderror", () => {
+            this.assetsFailed = true;
+        });
+
         this.load.setPath("/static");
 
         const images = { ...MENU_TEXTURES, ...WORLD_TEXTURES, ...OBJECT_TEXTURES, ...HUD_TEXTURES };
@@ -60,6 +67,25 @@ export class BootScene extends Phaser.Scene {
     }
 
     create() {
-        this.scene.start(this.gallery ? "gallery" : "login", { store: this.store });
+        if (this.assetsFailed) {
+            this.loading.showReload();
+            return;
+        }
+
+        if (this.gallery) {
+            this.scene.start("gallery", { store: this.store });
+            return;
+        }
+
+        // login already resumed and ready during boot, so enterGame stopped this scene and we are done
+        if (this.onReady()) {
+            return;
+        }
+
+        // a resume is mid-flight (login arrived, catalog/map still coming): keep the loading screen up
+        // until enterGame runs, so the landing never flashes before dropping into the game
+        if (this.store.phase !== "game") {
+            this.scene.start("login", { store: this.store });
+        }
     }
 }

@@ -22,6 +22,9 @@ import { interpolate } from "../helpers/interpolate.js";
 const INTERP_DELAY_MS = 120;
 const CAMERA_ZOOM = DPR;
 const CLOUD_DEPTH = 20000;
+// flat ground decorations (bushes) render in this band: above the ground tilemap (-9000) but below
+// every actor, so a unit standing on one is never covered by it
+const GROUND_DECOR_DEPTH = -8000;
 
 // every pixel-art world texture stays nearest-filtered under the smooth (antialiased) renderer
 const UNIT_TEXTURES = Object.entries(UNITS).flatMap(([key, unit]) =>
@@ -237,7 +240,10 @@ export class GameScene extends Phaser.Scene {
             const footprint = obj.w * this.tile;
             const baseY = (obj.y + obj.h) * this.tile;
             sprite.setOrigin(0.5, 1).setScale(footprint / sprite.width);
-            sprite.setPosition(obj.x * this.tile + footprint / 2, baseY).setDepth(baseY);
+
+            // solids y-sort so actors pass in front of and behind them; flat decorations sit below every actor
+            const depth = obj.solid ? baseY : GROUND_DECOR_DEPTH + baseY;
+            sprite.setPosition(obj.x * this.tile + footprint / 2, baseY).setDepth(depth);
         }
     }
 
