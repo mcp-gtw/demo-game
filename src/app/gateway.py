@@ -59,16 +59,15 @@ class AppGateway(Gateway):
 
     mcp_server_name = "app"
 
-    def __init__(
-        self,
-        settings: GatewaySettings | None = None,
-        app_settings: AppSettings | None = None,
-    ) -> None:
+    def __init__(self, app_settings: AppSettings | None = None) -> None:
         self.app_settings = app_settings or get_app_settings()
         self.rooms = RoomManager(self.app_settings)
         self._sessions: dict[str, Session] = {}
         self._session_lock = asyncio.Lock()
-        super().__init__(settings)
+        # the MCP endpoint runs stateless so the agent's connection survives a server restart: there
+        # is no in-memory transport session to lose, so its stored url+token keep working across a
+        # restart with no reconnect. every other GATEWAY_ env var is still read as usual
+        super().__init__(GatewaySettings(mcp_stateless=True))
 
     @contextlib.asynccontextmanager
     async def serve(self) -> AsyncIterator[None]:

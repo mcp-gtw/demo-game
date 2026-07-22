@@ -218,6 +218,10 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   forever** — a reload, a reopen, even a server restart yields the identical connection, so the agent's
   mcp config never needs reinstalling. A missing or malformed token closes the socket (`1008`) — nothing
   is minted. This is the gateway's "client-supplied token" recipe adapted to the app's session model.
+  To make that promise hold across a restart the gateway forces **`GatewaySettings(mcp_stateless=True)`**
+  (`gateway.py`): the MCP transport keeps no in-memory session id, so a client's stored url+token keep
+  working after the server restarts (once the page reopens to recreate the channel) with no MCP
+  reconnect — a stateful transport would 404 the agent's cached session id and force a reconfigure.
 - **Presence** — `gateway.py`. A player and its channel linger for `session_grace_seconds` (30s) after
   the browser disconnects, so a reload keeps the same character, then are reclaimed. The token stays
   valid regardless of the grace (the channel is recreated deterministically on the next connect).
