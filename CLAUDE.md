@@ -140,10 +140,13 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   parchment button sized to its label), `CopyButton` (a `TextButton` that copies to the clipboard and
   confirms — its confirm timer lives on the scene clock, so it is dropped on the button's `destroy`
   and the async copy bails if the button is already gone, so closing the window mid-copy never mutates
-  a torn-down text), `Window` (a closable parchment window with a dimming backdrop, a title, an
-  optional Copy button and a close button — sized to its content but capped to the viewport, wrapping
-  the body with **advanced word wrap** so an unbreakable url or token breaks to fit instead of spilling,
-  and when the body is longer than fits it shows one page of wrapped lines and scrolls with the mouse
+  a torn-down text), `Window` (a closable parchment window with a dimming backdrop, a title, a footer
+  row of **labeled copy buttons** (`copies: [{label, value}]`, each copying its own value) and a close
+  button — sized to its content but capped to the viewport, wrapping
+  the body with **advanced word wrap** so an unbreakable url or token breaks to fit instead of spilling
+  (a `mono` body keeps its leading indentation as non-breaking spaces so pretty-printed JSON stays
+  formatted, while each copy button still yields the raw value), and when the body is longer than fits
+  it shows one page of wrapped lines and scrolls with the mouse
   wheel, re-centring and re-fitting on resize; clicking the backdrop **outside** the panel closes it,
   clicking the panel does not), `Label`, `StatusStrip`, `Inventory`, `StatsWindow` (its two stat
   columns **scale down to fit** when a short viewport caps the panel, so the rows never spill). Each exposes a
@@ -165,8 +168,10 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   sprite can be eyeballed.
 - `src/scenes/LoginScene.js` — the Phaser landing: the Tiny Swords sky background (`ui/login_bg.png`)
   cover-fit, drifting `Clouds`, and a parchment card (title, online count, status). Pressing **Login**
-  (enabled once the session arrives) reveals three option buttons — Claude Code (CLI), MCP config, and
-  Tools — each opening a `Window` explaining it with a Copy button where it helps. The whole card is
+  (enabled once the session arrives) reveals four option buttons — Claude Code (CLI), MCP config
+  (mcp.json, the pretty-printed JSON with one Copy button), Endpoint + token (the two shown separately,
+  each with its **own** copy button so pasting one never drags the other in and breaks a config) and
+  Tools — each opening a `Window`. The whole card is
   **responsive**: it caps at 440 logical px but shrinks to the screen width, the text word-wraps and the
   buttons resize to fit, so it never clips on a narrow or portrait viewport.
 - `src/game/EntityView.js` — one on-screen entity (sprite, name tag, health bar, speech bubble). It

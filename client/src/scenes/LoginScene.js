@@ -83,10 +83,13 @@ export class LoginScene extends Phaser.Scene {
         this.optionButtons = [
             new TextButton(this, {
                 text: "Claude Code (CLI)",
-                onClick: () =>
-                    this.#open("Claude Code (CLI)", claudeCommand(info.mcpUrl, info.mcpToken), true, true),
+                onClick: () => {
+                    const command = claudeCommand(info.mcpUrl, info.mcpToken);
+                    this.#open("Claude Code (CLI)", command, { mono: true, copies: [{ label: "Copy", value: command }] });
+                },
             }),
-            new TextButton(this, { text: "MCP config (mcp.json)", onClick: () => this.#openMcp(info) }),
+            new TextButton(this, { text: "MCP Config (mcp.json)", onClick: () => this.#openMcp(info) }),
+            new TextButton(this, { text: "Endpoint + Token", onClick: () => this.#openConnect(info) }),
             new TextButton(this, { text: "Tools", onClick: () => this.#openTools() }),
         ];
 
@@ -100,8 +103,21 @@ export class LoginScene extends Phaser.Scene {
     }
 
     #openMcp(info) {
-        const body = `${mcpJson(info.mcpUrl, info.mcpToken)}\n\nEndpoint: ${info.mcpUrl}\nToken: ${info.mcpToken}`;
-        this.#open("MCP config", body, true, true);
+        const json = mcpJson(info.mcpUrl, info.mcpToken);
+        this.#open("MCP Config (mcp.json)", json, { mono: true, copies: [{ label: "Copy", value: json }] });
+    }
+
+    // the endpoint and token on their own, each with its own copy button, so pasting one never drags
+    // the other along and breaks a config
+    #openConnect(info) {
+        const body = `Endpoint\n${info.mcpUrl}\n\nToken\n${info.mcpToken}`;
+        this.#open("Endpoint + Token", body, {
+            mono: true,
+            copies: [
+                { label: "Copy Endpoint", value: info.mcpUrl },
+                { label: "Copy Token", value: info.mcpToken },
+            ],
+        });
     }
 
     #openTools() {
@@ -109,12 +125,12 @@ export class LoginScene extends Phaser.Scene {
         const body = tools.length
             ? tools.map((tool) => `• ${tool.name}\n   ${tool.description}`).join("\n\n")
             : "The tool list loads once your session is ready.";
-        this.#open("Tools", body, false, false);
+        this.#open("Tools", body, {});
     }
 
-    #open(title, body, mono, copyable) {
+    #open(title, body, { mono = false, copies = [] }) {
         this.window?.close();
-        this.window = new Window(this, { title, body, mono, copyable });
+        this.window = new Window(this, { title, body, mono, copies });
     }
 
     #text(value, options) {

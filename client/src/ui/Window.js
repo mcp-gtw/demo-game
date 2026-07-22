@@ -16,8 +16,9 @@ const MONO = "ui-monospace, Menlo, monospace";
 // the space left is shown one page of wrapped lines at a time and scrolled with the mouse wheel, so
 // it never spills off screen and needs no mask. Re-lays-out on resize to stay centred.
 export class Window {
-    constructor(scene, { title, body, mono = false, copyable = false }) {
+    constructor(scene, { title, body, mono = false, copies = [] }) {
         this.scene = scene;
+        this.mono = mono;
         this.body = body;
         this.offset = 0;
         this.root = scene.add.container(0, 0).setScale(DPR).setDepth(150000);
@@ -37,12 +38,12 @@ export class Window {
                 wordWrap: { width: 400 },
             })
             .setResolution(TEXT_DPR);
-        this.copy = copyable ? new CopyButton(scene, () => body) : null;
+        this.copies = copies.map(({ label, value }) => new CopyButton(scene, () => value, label));
         this.closeButton = new Button(scene, { size: 40, iconSize: 22, icon: "icon_close", onClick: () => this.close() });
 
         this.root.add([this.backdrop, this.panel.node, this.title, this.text, this.closeButton.root]);
-        if (this.copy) {
-            this.root.add(this.copy.root);
+        for (const copy of this.copies) {
+            this.root.add(copy.root);
         }
 
         this.onWheel = (_pointer, _over, _dx, dy) => this.#scroll(Math.sign(dy));
@@ -66,11 +67,15 @@ export class Window {
         this.title.setWordWrapWidth(bodyWidth, true);
         this.text.setWordWrapWidth(bodyWidth, true);
 
-        this.lines = this.text.getWrappedText(this.body);
+        // Phaser's word wrap trims each line's leading spaces, which would flatten the JSON indent, so
+        // a mono body keeps its indentation as non-breaking spaces (the copied value stays real spaces)
+        const shown = this.mono ? this.body.replace(/^[ \t]+/gm, (run) => " ".repeat(run.length)) : this.body;
+        this.lines = this.text.getWrappedText(shown);
         this.text.setText(this.lines.join("\n"));
         const lineHeight = this.text.height / this.lines.length;
 
-        const headFoot = PAD * 2 + this.title.height + TITLE_GAP + (this.copy ? COPY_GAP + this.copy.height : 0);
+        const copyHeight = this.copies.length ? Math.max(...this.copies.map((copy) => copy.height)) : 0;
+        const headFoot = PAD * 2 + this.title.height + TITLE_GAP + (this.copies.length ? COPY_GAP + copyHeight : 0);
         const maxBodyHeight = Math.min(height - SCREEN_MARGIN * 2 - headFoot, MAX_BODY_HEIGHT);
         this.pageLines = Math.max(1, Math.min(this.lines.length, Math.floor(maxBodyHeight / lineHeight)));
         this.offset = Math.max(0, Math.min(this.offset, this.lines.length - this.pageLines));
@@ -92,8 +97,11 @@ export class Window {
         this.text.setPosition(originX + PAD, originY + PAD + this.title.height + TITLE_GAP);
         this.closeButton.setPosition(originX + panelWidth - 22, originY + 22);
 
-        if (this.copy) {
-            this.copy.setPosition(originX + PAD + this.copy.width / 2, originY + panelHeight - PAD - this.copy.height / 2);
+        let copyX = originX + PAD;
+        const copyY = originY + panelHeight - PAD - copyHeight / 2;
+        for (const copy of this.copies) {
+            copy.setPosition(copyX + copy.width / 2, copyY);
+            copyX += copy.width + COPY_GAP;
         }
     }
 

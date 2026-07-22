@@ -3,9 +3,10 @@ import { TextButton } from "./TextButton.js";
 
 // a text button that copies a value to the clipboard and briefly confirms
 export class CopyButton {
-    constructor(scene, getValue) {
+    constructor(scene, getValue, label = "Copy") {
         this.getValue = getValue;
-        this.button = new TextButton(scene, { text: "Copy", minWidth: 108, onClick: () => this.#copy() });
+        this.label = label;
+        this.button = new TextButton(scene, { text: label, minWidth: 108, onClick: () => this.#copy() });
         this.root = this.button.root;
         this.width = this.button.width;
         this.height = this.button.height;
@@ -28,6 +29,6 @@ export class CopyButton {
 
         this.button.setText("Copied");
         this.timer?.remove();
-        this.timer = this.button.scene.time.delayedCall(1200, () => this.button.setText("Copy"));
+        this.timer = this.button.scene.time.delayedCall(1200, () => this.button.setText(this.label));
     }
 }
