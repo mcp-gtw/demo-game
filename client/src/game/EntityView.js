@@ -1,4 +1,3 @@
-import Phaser from "phaser";
 import { angleOf, animForState, cellCenter, facesLeft } from "../helpers/geometry.js";
 import { healthRatio } from "../helpers/health.js";
 import { ENEMY_COLOR, TEXT_DPR, TREES, UNITS } from "../constants.js";
@@ -9,8 +8,8 @@ const TELEPORT_CELLS = 2;
 // vertical offsets in tiles for the labels above a unit, stacked so they never overlap: the health
 // bar sits just above the head, the name above the bar, the speech bubble above the name
 const BAR_OFFSET = -1.15;
-const NAME_OFFSET = -1.45;
-const BUBBLE_OFFSET = -1.9;
+const NAME_OFFSET = -1.3;
+const BUBBLE_OFFSET = -1.75;
 
 // one on-screen entity: a container holding its animated body plus a name tag, health bar and
 // speech bubble. It owns nothing but drawing, reading each frame's interpolated entity data.
@@ -187,12 +186,11 @@ export class EntityView {
         this.lastHealth = entity.health;
     }
 
+    // a multiply tint reddens the sprite but keeps its shape and shading, so a hit never hides who it is
     #flashTint() {
-        this.body.setTint(0xff3b30).setTintMode(Phaser.TintModes.FILL);
+        this.body.setTint(0xff5050);
         this.flashTimer?.remove();
-        this.flashTimer = this.scene.time.delayedCall(90, () => {
-            this.body.setTintMode(Phaser.TintModes.MULTIPLY).clearTint();
-        });
+        this.flashTimer = this.scene.time.delayedCall(110, () => this.body.clearTint());
     }
 
     #trail(entity) {
@@ -239,16 +237,17 @@ export class EntityView {
         const bar = this.extras.bar;
         bar.clear();
 
-        if (entity.health >= entity.maxHealth) {
-            return;
-        }
-
-        const width = this.tile * 0.9;
-        const ratio = healthRatio(entity.health, entity.maxHealth);
+        const width = this.tile * 0.92;
+        const h = 7;
+        const x = -width / 2;
         const y = this.tile * BAR_OFFSET;
-        bar.fillStyle(0x10152b, 0.85).fillRect(-width / 2, y, width, 6);
-        bar.fillStyle(entity.kind === "player" ? 0x62c462 : 0xe06a5a, 1);
-        bar.fillRect(-width / 2, y, width * ratio, 6);
+        const ratio = healthRatio(entity.health, entity.maxHealth);
+        const fill = entity.kind === "player" ? 0x66d166 : 0xe0503f;
+
+        // a dark frame around the bar so it reads clearly against the world, then the track and the fill
+        bar.fillStyle(0x141009, 1).fillRect(x - 1, y - 1, width + 2, h + 2);
+        bar.fillStyle(0x2b2519, 1).fillRect(x, y, width, h);
+        bar.fillStyle(fill, 1).fillRect(x, y, width * ratio, h);
     }
 
     #speech(entity) {

@@ -153,8 +153,9 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
 - `src/scenes/GalleryScene.js` — a scrollable showcase reachable at **`/?gallery`** rendering one of
   each element stacked vertically (Label, TextButton, Button, HealthBar, Panel, the player idle/run/
   attack cycle, the sheep, a tree, the arrow projectile with trail and a particle burst, plus a real
-  `EntityView` **player card** with its name tag and partial health bar so the label stacking can be
-  verified), so every component and sprite can be eyeballed at a glance.
+  `EntityView` **player card** that pulses damage on a loop and carries a max-length speech bubble, so
+  the label stacking, the framed health bar, the multiply-tint hit flash and the bubble can all be
+  verified), so every component and sprite can be eyeballed.
 - `src/scenes/LoginScene.js` — the Phaser landing: the Tiny Swords sky background (`ui/login_bg.png`)
   cover-fit, drifting `Clouds`, and a parchment card (title, online count, status). Pressing **Login**
   (enabled once the session arrives) reveals three option buttons — Claude Code (CLI), MCP config, and
@@ -165,9 +166,10 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   picks the per-faction texture (`#textureBase`: the player's colour, or red for enemies) and **walks
   actors smoothly** toward their cell over `moveMs`, snapping only on a respawn-sized jump. The labels
   **stack above the head without overlapping** (`BAR_OFFSET` < `NAME_OFFSET` < `BUBBLE_OFFSET`): the
-  health bar just above the head, the name above the bar, the speech bubble above the name; a fresh
-  collectible (loot, respawned pickup) **hops in**. A drop in `health` (or a tree's `hits`) triggers a
-  single quick red fill-tint flash, and projectiles leave a short fading golden trail.
+  **framed** health bar (dark border + track, green for players, red for enemies) just above the head,
+  the name above the bar, the speech bubble above the name; a fresh collectible (loot, respawned pickup)
+  **hops in**. A drop in `health` (or a tree's `hits`) triggers a single quick red **multiply-tint**
+  flash that reddens the sprite without hiding it, and projectiles leave a short fading golden trail.
 - `src/game/DamageNumbers.js` — floating combat numbers: each hit spawns the amount taken, rising and
   fading in a random direction so overlapping hits fan out.
 - `src/game/DebugOverlay.js` — a togglable overlay (press **B**) drawing the Tiled cell grid, the
@@ -378,7 +380,7 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   the player, recentres on resize.
 - **Combat feedback** — the attacking state plays the unit's attack spritesheet, the ranged bow fires
   the `arrow` projectile which leaves a short fading golden trail, a drop in an entity's `health` (or a
-  tree's `hits`) flashes it red once (a fill tint via `setTintMode`) and spawns a floating `DamageNumbers` value that
+  tree's `hits`) flashes it red once (a quick **multiply** tint that reddens without hiding the sprite) and spawns a floating `DamageNumbers` value that
   rises and fades in a random direction (red for units, wood for trees), and spawn/death fire a real
   Phaser particle burst from a runtime-generated `spark` texture (blue on arrival, amber on leaving).
 - **HiDPI (retina)** — Phaser sizes its canvas in CSS pixels, so on a retina screen the browser upscales

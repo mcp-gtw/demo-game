@@ -87,19 +87,34 @@ export class GalleryScene extends Phaser.Scene {
     }
 
     #playerCardRow() {
-        // a real EntityView (name tag + partial health bar) so the label layout can be eyeballed
-        this.y += 80;
-        this.#label("Player name + health bar", "15px", LABEL_X, "#dfeefc");
+        // a real EntityView so the framed health bar, the hit flash and a max-length speech bubble can
+        // be tested live
+        this.y += 110;
+        this.#label("Player: name, bar, hit flash, speech", "15px", LABEL_X, "#dfeefc");
 
+        const tile = 56;
+        const cx = ITEM_X + 60;
         const hero = {
             id: "hero", kind: "player", name: "Hero", sprite: "warrior", color: "blue",
             state: "idle", facing: "down", health: 62, maxHealth: 100, alive: true, immune: false,
-            position: { x: 0, y: 0 }, moveMs: 280, speech: null, visionRange: null, visionPulseSeq: 0,
+            position: { x: (cx - tile / 2) / tile, y: (this.y - tile / 2) / tile },
+            moveMs: 280, speech: "The quick brown fox jumps over the lazy dog today!",
+            visionRange: null, visionPulseSeq: 0,
         };
-        const view = new EntityView(this, hero, 56, this.playerId);
+        const view = new EntityView(this, hero, tile, this.playerId);
         view.update(hero, this.time.now, 16);
-        view.container.setPosition(ITEM_X + 60, this.y);
         this.layer.add(view.container);
+
+        // pulse damage so the framed bar drops and the hit flash reddens the sprite on a loop
+        this.time.addEvent({
+            delay: 1300,
+            loop: true,
+            callback: () => {
+                hero.health = hero.health > 22 ? hero.health - 20 : 100;
+                view.update(hero, this.time.now, 16);
+            },
+        });
+
         this.y += 130;
     }
 
