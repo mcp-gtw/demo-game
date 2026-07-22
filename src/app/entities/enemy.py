@@ -30,7 +30,7 @@ class Enemy:
     flee_range: int
     flee_when_attacked: bool
     spook_seconds: float
-    wander_chance: float
+    wander_pause: tuple[float, float]
     facing: str = "down"
     health: int = 0
     alive: bool = True
@@ -38,6 +38,7 @@ class Enemy:
     busy_until: float = 0.0
     attack_ready_at: float = 0.0
     spooked_until: float = 0.0
+    wander_ready_at: float = 0.0
     respawn_at: float | None = None
 
     def __post_init__(self) -> None:

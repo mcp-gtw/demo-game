@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { buildAnimations } from "../helpers/animations.js";
 import { Button } from "../ui/Button.js";
-import { DPR, FOAM, FOAM_FRAME, INK, TEXT_DPR } from "../constants.js";
+import { DPR, FOAM, FOAM_FRAME, INK, TEXT_DPR, UNITS } from "../constants.js";
 import { EntityView } from "../game/EntityView.js";
 import { HealthBar } from "../ui/HealthBar.js";
 import { Panel } from "../ui/Panel.js";
@@ -41,6 +41,7 @@ export class GalleryScene extends Phaser.Scene {
         this.#caption("Lancer (black) idle/run/attack", () => this.#unitCycle("black_lancer"));
         this.#caption("Enemy warrior (red) idle/run/attack", () => this.#unitCycle("red_warrior"));
         this.#caption("Sheep idle", () => this.#unit("sheep", "idle"));
+        this.#unitAlignment();
         this.#playerCardRow();
         this.#caption("Tree", () => this.#tree());
         this.#caption("Projectile + trail", () => this.#arrow());
@@ -84,6 +85,44 @@ export class GalleryScene extends Phaser.Scene {
         const sprite = this.add.sprite(ITEM_X + 40, this.y, `${key}_idle`).play(`${key}_${state}`);
         this.layer.add(sprite);
         return sprite;
+    }
+
+    #unitAlignment() {
+        // each unit on its own cell (green outline + centre cross) with its health bar, mirroring the
+        // EntityView math, so the per-unit originY (feet on the cell) and labelY (bar over the head) can
+        // be tuned by eye
+        const t = 46;
+        const units = [["warrior", "blue"], ["archer", "blue"], ["monk", "purple"], ["lancer", "black"], ["sheep", null]];
+
+        for (const [key, color] of units) {
+            this.y += 130;
+            this.#label(`align: ${key}`, "14px", LABEL_X, "#dfeefc");
+
+            const cx = ITEM_X + 40;
+            const cy = this.y;
+            const unit = UNITS[key];
+
+            const cell = this.add.graphics();
+            cell.lineStyle(1, 0x62ff8a, 0.9).strokeRect(cx - t / 2, cy - t / 2, t, t);
+            cell.lineStyle(1, 0xffffff, 0.5).lineBetween(cx - 6, cy, cx + 6, cy).lineBetween(cx, cy - 6, cx, cy + 6);
+            this.layer.add(cell);
+
+            const base = unit.colored ? `${color}_${key}` : key;
+            const sprite = this.add.sprite(cx, cy, `${base}_idle`).play(`${base}_idle`);
+            sprite.setOrigin(0.5, unit.originY).setScale((t * unit.scale) / unit.frame);
+            this.layer.add(sprite);
+
+            const bw = t * 0.92;
+            const bx = cx - bw / 2;
+            const by = cy + t * unit.labelY;
+            const bar = this.add.graphics();
+            bar.fillStyle(0x141009, 1).fillRect(bx - 1, by - 1, bw + 2, 8);
+            bar.fillStyle(0x2b2519, 1).fillRect(bx, by, bw, 6);
+            bar.fillStyle(0x66d166, 1).fillRect(bx, by, bw * 0.6, 6);
+            this.layer.add(bar);
+
+            this.y += 70;
+        }
     }
 
     #playerCardRow() {

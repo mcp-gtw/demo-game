@@ -1,15 +1,14 @@
 import { angleOf, animForState, cellCenter, facesLeft } from "../helpers/geometry.js";
 import { healthRatio } from "../helpers/health.js";
-import { ENEMY_COLOR, TEXT_DPR, TREES, UNITS } from "../constants.js";
+import { COLLECTIBLE_SCALE, ENEMY_COLOR, TEXT_DPR, TREES, UNITS } from "../constants.js";
 
 // a jump beyond this many cells is a teleport (respawn), so the sprite snaps instead of sliding
 const TELEPORT_CELLS = 2;
 
-// vertical offsets in tiles for the labels above a unit, stacked so they never overlap: the health
-// bar sits just above the head, the name above the bar, the speech bubble above the name
-const BAR_OFFSET = -1.15;
-const NAME_OFFSET = -1.3;
-const BUBBLE_OFFSET = -1.75;
+// the name and speech bubble stack this many tiles above the unit's health bar (whose own offset is
+// per-unit), so the three labels never overlap
+const NAME_GAP = 0.15;
+const BUBBLE_GAP = 0.6;
 
 // one on-screen entity: a container holding its animated body plus a name tag, health bar and
 // speech bubble. It owns nothing but drawing, reading each frame's interpolated entity data.
@@ -40,10 +39,14 @@ export class EntityView {
         }
 
         if (entity.kind === "coin") {
-            return this.#createStatic("coin");
+            return this.#createStatic("coin", COLLECTIBLE_SCALE.coin);
         }
 
-        return this.#createStatic(entity.kind === "food" ? "meat" : `item_${entity.item}`);
+        if (entity.kind === "food") {
+            return this.#createStatic("meat", COLLECTIBLE_SCALE.food);
+        }
+
+        return this.#createStatic(`item_${entity.item}`, COLLECTIBLE_SCALE.item);
     }
 
     #createUnit(entity) {
@@ -52,9 +55,12 @@ export class EntityView {
         sprite.setOrigin(0.5, unit.originY).setScale((this.tile * unit.scale) / unit.frame);
         this.container.add(sprite);
 
+        this.barY = this.tile * unit.labelY;
+        this.bubbleY = this.tile * (unit.labelY - BUBBLE_GAP);
+
         if (entity.kind === "player") {
             const own = entity.id === this.playerId;
-            const name = this.scene.add.text(0, this.tile * NAME_OFFSET, entity.name, {
+            const name = this.scene.add.text(0, this.tile * (unit.labelY - NAME_GAP), entity.name, {
                 fontFamily: "Roboto, sans-serif",
                 fontSize: "16px",
                 fontStyle: "700",
@@ -99,9 +105,9 @@ export class EntityView {
         return sprite;
     }
 
-    #createStatic(texture) {
+    #createStatic(texture, scale) {
         const sprite = this.scene.add.image(0, 0, texture);
-        sprite.setScale((this.tile * 0.7) / sprite.width);
+        sprite.setScale((this.tile * scale) / sprite.width);
         this.container.add(sprite);
 
         // a fresh drop (loot or a respawned pickup) hops in, while items already on the map at load
@@ -240,7 +246,7 @@ export class EntityView {
         const width = this.tile * 0.92;
         const h = 7;
         const x = -width / 2;
-        const y = this.tile * BAR_OFFSET;
+        const y = this.barY;
         const ratio = healthRatio(entity.health, entity.maxHealth);
         const fill = entity.kind === "player" ? 0x66d166 : 0xe0503f;
 
@@ -262,7 +268,7 @@ export class EntityView {
         }
 
         this.extras.bubble?.destroy();
-        const text = this.scene.add.text(0, this.tile * BUBBLE_OFFSET, entity.speech, {
+        const text = this.scene.add.text(0, this.bubbleY, entity.speech, {
             fontFamily: "Roboto, sans-serif",
             fontSize: "12px",
             color: "#3a2a14",

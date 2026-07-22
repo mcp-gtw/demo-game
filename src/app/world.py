@@ -392,10 +392,14 @@ class World:
         return spooked or approached
 
     def _wander(self, enemy: Enemy) -> None:
-        if self.rng.random() >= enemy.wander_chance:
+        # an animal steps one cell then stands still for a random rest, so it is catchable instead
+        # of drifting every tick
+        if self.time < enemy.wander_ready_at:
             return
 
         self._enemy_move(enemy, self.rng.choice(_DIRECTION_NAMES))
+        low, high = enemy.wander_pause
+        enemy.wander_ready_at = max(self.time, enemy.busy_until) + self.rng.uniform(low, high)
 
     def _can_attack(self, enemy: Enemy, prey: Player) -> bool:
         if enemy.cell.chebyshev_to(prey.cell) > enemy.attack_range:
@@ -487,6 +491,7 @@ class World:
         enemy.spooked_until = 0.0
         enemy.busy_until = 0.0
         enemy.attack_ready_at = 0.0
+        enemy.wander_ready_at = 0.0
         enemy.machine = StateMachine()
 
     def _enter_spawn(self, player: Player) -> None:
@@ -867,5 +872,5 @@ class World:
                     flee_range=spec.flee_range,
                     flee_when_attacked=spec.flee_when_attacked,
                     spook_seconds=spec.spook_seconds,
-                    wander_chance=spec.wander_chance,
+                    wander_pause=spec.wander_pause,
                 )

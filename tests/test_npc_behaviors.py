@@ -34,20 +34,19 @@ def test_skittish_enemy_flees_from_a_nearby_player(world):
 
 
 def test_skittish_enemy_wanders_when_no_player_is_near(world):
-    enemy = _enemy(world, 5, 5, behavior=Behavior.SKITTISH, flee_range=4, wander_chance=1.0)
-    world.rng = SeqRandom([0.0])
+    enemy = _enemy(world, 5, 5, behavior=Behavior.SKITTISH, flee_range=4)
     world._advance_enemies()
     assert enemy.state == "moving"
 
 
-def test_wander_enemy_roams_or_rests_on_its_chance(world):
-    roamer = _enemy(world, 5, 5, behavior=Behavior.WANDER, wander_chance=1.0)
-    world.rng = SeqRandom([0.0])
+def test_wander_enemy_steps_then_rests_for_its_pause(world):
+    roamer = _enemy(world, 5, 5, behavior=Behavior.WANDER, wander_pause=(3.0, 10.0))
     world._advance_enemies()
     assert roamer.state == "moving"
+    assert roamer.wander_ready_at >= world.time + 3.0
 
-    rester = _enemy(world, 8, 8, behavior=Behavior.WANDER, wander_chance=0.0)
-    world.rng = SeqRandom([0.5])
+    rester = _enemy(world, 8, 8, behavior=Behavior.WANDER, wander_pause=(3.0, 10.0))
+    rester.wander_ready_at = world.time + 5.0
     world._advance_enemies()
     assert rester.state == "idle"
 

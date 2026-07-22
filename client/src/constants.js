@@ -19,13 +19,19 @@ export const ENEMY_COLOR = "red";
 // origin (its feet sit at the cell centre) and per-animation frame rates. a missing attackRate means
 // no attack animation (animals). colored units ship one sheet set per faction color, so a player
 // renders as its class sprite in its chosen color and an enemy as its spec sprite in red.
+// `originY` puts the unit's feet on the cell centre and `labelY` (tiles above the cell) the health bar
+// just over its head — both per unit, since every sheet frames its character differently
 export const UNITS = {
-    warrior: { frame: 192, scale: 2.6, originY: 0.59, idleRate: 8, runRate: 12, attackRate: 12, colored: true },
-    archer: { frame: 192, scale: 2.6, originY: 0.59, idleRate: 8, runRate: 12, attackRate: 14, colored: true },
-    monk: { frame: 192, scale: 2.6, originY: 0.58, idleRate: 8, runRate: 12, attackRate: 12, colored: true },
-    lancer: { frame: 320, scale: 4.3, originY: 0.62, idleRate: 8, runRate: 12, attackRate: 10, colored: true },
-    sheep: { frame: 128, scale: 1.7, originY: 0.47, idleRate: 5, runRate: 6 },
+    warrior: { frame: 192, scale: 2.6, originY: 0.714, labelY: -1.47, idleRate: 8, runRate: 12, attackRate: 12, colored: true },
+    archer: { frame: 192, scale: 2.6, originY: 0.708, labelY: -1.49, idleRate: 8, runRate: 12, attackRate: 14, colored: true },
+    monk: { frame: 192, scale: 2.6, originY: 0.698, labelY: -1.24, idleRate: 8, runRate: 12, attackRate: 12, colored: true },
+    lancer: { frame: 320, scale: 4.3, originY: 0.619, labelY: -1.34, idleRate: 8, runRate: 12, attackRate: 10, colored: true },
+    sheep: { frame: 128, scale: 1.7, originY: 0.656, labelY: -0.9, idleRate: 5, runRate: 6 },
 };
+
+// on-screen size in tiles per collectible kind, so items sit small on the ground while coins and meat
+// stay readable
+export const COLLECTIBLE_SCALE = { coin: 0.7, food: 0.7, item: 0.36 };
 
 // the texture-key bases a colored unit exposes (one per color), or its bare key when it has no colors
 export function unitBases(key, unit) {

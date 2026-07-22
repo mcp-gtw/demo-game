@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from app.entities.player import RESOURCE_KINDS
 from app.errors import MapError
 from app.items import ITEMS
 from app.npcs.behavior import Behavior
@@ -74,7 +73,6 @@ ENEMIES: dict[str, EnemySpec] = {
         respawn_seconds=120.0,
         behavior=Behavior.SKITTISH,
         flee_range=4,
-        wander_chance=0.12,
         loot=(LootDrop("food", 25, 0.8), LootDrop("gold", 3, 0.5)),
     ),
     "sheep_flighty": EnemySpec(
@@ -90,7 +88,6 @@ ENEMIES: dict[str, EnemySpec] = {
         behavior=Behavior.WANDER,
         flee_when_attacked=True,
         spook_seconds=4.0,
-        wander_chance=0.16,
         loot=(LootDrop("food", 25, 0.7), LootDrop("boots", 1, 0.15)),
     ),
     "sheep_calm": EnemySpec(
@@ -104,14 +101,15 @@ ENEMIES: dict[str, EnemySpec] = {
         attack_cooldown=1.0,
         respawn_seconds=120.0,
         behavior=Behavior.WANDER,
-        wander_chance=0.12,
         loot=(LootDrop("food", 25, 1.0), LootDrop("heart", 1, 0.2)),
     ),
 }
 
 
 def _validate_loot(enemies: dict[str, EnemySpec]) -> None:
-    valid = {"food", *ITEMS, *RESOURCE_KINDS}
+    # food drops meat, an item id drops that pickup, and everything else becomes a gold coin, so
+    # gold is the only resource that maps to a coin
+    valid = {"food", "gold", *ITEMS}
 
     for spec in enemies.values():
         for drop in spec.loot:

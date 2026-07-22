@@ -58,7 +58,7 @@ stats panel is fed by `{type: "me"}` over the same socket.
   loader classifies against and the client reads via the catalog, so a new object type is one entry.
 - `npcs/` — the NPC catalog, one class per file: `behavior.py` (`Behavior` = aggressive/skittish/wander),
   `loot_drop.py` (`LootDrop`), `enemy_spec.py` (`EnemySpec`, every stat an NPC is born with — profile,
-  ranged, flee params, wander chance, per-NPC `respawn_seconds`, `attack_duration`, loot table) and `registry.py`
+  ranged, flee params, `wander_pause`, per-NPC `respawn_seconds`, `attack_duration`, loot table) and `registry.py`
   (`ENEMIES` + `get_enemy_spec`). Adding a profile is one `EnemySpec` entry, no engine change.
 - `catalog.py` — `build_catalog`: the single shared source of truth (weapons, items, enemies, objects,
   directions, states, search types, limits) the client reads instead of re-declaring game data.
@@ -86,7 +86,9 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   **Everything the player sees is Phaser** — there is no DOM/CSS interface. The `index.html` body holds
   only a `#game` div; its `<head>` carries the SEO/social metadata (title, description, Open Graph and
   Twitter card pointing at `public/og.png`, `application/ld+json` `VideoGame` structured data), the
-  favicon set (`public/favicon.svg` + PNG + apple-touch), and the Google Analytics `gtag` snippet — the
+  favicon set (`public/favicon.ico` + `favicon-16x16`/`favicon-32x32` PNGs + apple-touch + the
+  `android-chrome-192/512` PWA icons, wired with a `site.webmanifest` whose icon `src`s are `/static/dist`
+  rooted since that is where the browser serves them), and the Google Analytics `gtag` snippet — the
   one external script the page loads. `style.css` only makes the app fill the browser (fullscreen, no
   scroll, no text selection, no margins) plus the `@font-face` for the crisp Roboto text. Brand assets in
   `client/public/` are copied by Vite to `web/dist/` and served under `/static/dist/`. The landing, the
@@ -118,8 +120,11 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   manifests (`MENU_TEXTURES`, `WORLD_TEXTURES`, `OBJECT_TEXTURES`, `HUD_TEXTURES`), the `UNITS` catalog
   (one entry per unit sprite — `warrior`, `archer`, `monk`, `lancer`, `sheep`; a player renders as its
   class sprite, an enemy as its `EnemySpec.sprite`) carrying the spritesheet frame size, on-screen scale,
-  the vertical `originY` (so the unit stands on its cell), and the idle/run/attack frame rates — the
-  sheep animates slower than the humanoids and has no attack. The four humanoid classes are `colored`,
+  the vertical `originY` (its feet land on the cell centre — measured per sheet since each frames its
+  character differently), the `labelY` (health bar over its head, tiles above the cell) and the
+  idle/run/attack frame rates — the sheep animates slower than the humanoids and has no attack.
+  `COLLECTIBLE_SCALE` sets the on-screen tile size per collectible kind (items are drawn small, ~half a
+  coin). The four humanoid classes are `colored`,
   shipping one spritesheet set per faction under `assets/units/<unit>/<color>/`; `UNIT_COLORS`
   (blue/yellow/purple/black/red) and `unitBases` build the per-colour texture keys, so a player draws in
   its chosen colour and an enemy in `ENEMY_COLOR` (red). `TREES` lists the four choppable-tree
@@ -152,10 +157,12 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   world → HUD.
 - `src/scenes/GalleryScene.js` — a scrollable showcase reachable at **`/?gallery`** rendering one of
   each element stacked vertically (Label, TextButton, Button, HealthBar, Panel, the player idle/run/
-  attack cycle, the sheep, a tree, the arrow projectile with trail and a particle burst, plus a real
-  `EntityView` **player card** that pulses damage on a loop and carries a max-length speech bubble, so
-  the label stacking, the framed health bar, the multiply-tint hit flash and the bubble can all be
-  verified), so every component and sprite can be eyeballed.
+  attack cycle, the sheep, a tree, the arrow projectile with trail and a particle burst, a **unit
+  alignment** row per unit — each on its cell (outline + centre cross) with its bar, mirroring the
+  EntityView math so `originY`/`labelY` can be tuned by eye — plus a real `EntityView` **player card**
+  that pulses damage on a loop and carries a max-length speech bubble, so the label stacking, the framed
+  health bar, the multiply-tint hit flash and the bubble can all be verified), so every component and
+  sprite can be eyeballed.
 - `src/scenes/LoginScene.js` — the Phaser landing: the Tiny Swords sky background (`ui/login_bg.png`)
   cover-fit, drifting `Clouds`, and a parchment card (title, online count, status). Pressing **Login**
   (enabled once the session arrives) reveals three option buttons — Claude Code (CLI), MCP config, and
@@ -165,9 +172,10 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
 - `src/game/EntityView.js` — one on-screen entity (sprite, name tag, health bar, speech bubble). It
   picks the per-faction texture (`#textureBase`: the player's colour, or red for enemies) and **walks
   actors smoothly** toward their cell over `moveMs`, snapping only on a respawn-sized jump. The labels
-  **stack above the head without overlapping** (`BAR_OFFSET` < `NAME_OFFSET` < `BUBBLE_OFFSET`): the
-  **framed** health bar (dark border + track, green for players, red for enemies) just above the head,
-  the name above the bar, the speech bubble above the name; a fresh collectible (loot, respawned pickup)
+  **stack above the head without overlapping**, off the unit's per-unit `labelY` with the name and
+  bubble a fixed `NAME_GAP`/`BUBBLE_GAP` higher: the **framed, always-shown** health bar (dark border +
+  track, green for players, red for enemies) just above the head, the name above the bar, the speech
+  bubble above the name; a fresh collectible (loot, respawned pickup)
   **hops in**. A drop in `health` (or a tree's `hits`) triggers a single quick red **multiply-tint**
   flash that reddens the sprite without hiding it, and projectiles leave a short fading golden trail.
 - `src/game/DamageNumbers.js` — floating combat numbers: each hit spawns the amount taken, rising and
@@ -325,7 +333,10 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
 - **NPC behavior profiles** — `World._act_enemy` dispatches on `Behavior`: **aggressive** chases the
   nearest visible player and attacks (melee `_enemy_attack`, or ranged `_launch_arrow` firing a hostile
   `Projectile`); **skittish** flees when a player is within `flee_range` and otherwise wanders;
-  **wander** roams on `wander_chance`. `flee_when_attacked` NPCs are spooked for `spook_seconds` on a hit
+  **wander** steps one cell then stands still for a random rest (`EnemySpec.wander_pause`, 3–10s, tracked
+  per animal by `wander_ready_at`), so an animal is catchable instead of drifting every tick; a hit still
+  overrides the rest immediately since fleeing runs on a separate branch. `flee_when_attacked` NPCs are
+  spooked for `spook_seconds` on a hit
   (`_damage`) and flee regardless of profile. Enemies move slower than players and hit softly. The
   four combat NPCs (`enemy_warrior`, `enemy_archer`, `enemy_lancer`, `enemy_monk`) are aggressive and
   render red via `EnemySpec.sprite` (warrior/archer/lancer/monk); the three **sheep** animals
@@ -333,8 +344,9 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   sprite and drop food, gold or items — a new enemy or animal is one `EnemySpec` entry plus its spawn point.
 - **Loot** — `World._drop_loot` rolls each `EnemySpec.loot` `LootDrop`: `food` drops a `Food` where the
   NPC fell, an item id (in `ITEMS`) drops a `Pickup`, anything else (gold) drops a `Coin` to walk onto.
-  `npcs/registry.py` validates every loot `resource` against `{food} ∪ ITEMS ∪ RESOURCE_KINDS` at import,
-  so an unknown resource fails fast instead of a runtime error when the NPC dies.
+  `npcs/registry.py` validates every loot `resource` against `{food, gold} ∪ ITEMS` at import (gold is the
+  only resource that maps to a coin), so an unknown resource fails fast instead of a runtime error when
+  the NPC dies.
 - **Placement never lands on a bad cell** — `_emptiest_spawn`/`_spawn_within` sample for variety but,
   when sampling misses, fall back to a deterministic `_first_free_cell` scan and **raise** if the map is
   genuinely full rather than returning a blocked or occupied cell. Both paths reject a cell holding an

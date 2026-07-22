@@ -35,7 +35,7 @@ def make_enemy(**overrides):
         flee_range=0,
         flee_when_attacked=False,
         spook_seconds=0.0,
-        wander_chance=0.35,
+        wander_pause=(3.0, 10.0),
     )
     params.update(overrides)
     return Enemy(**params)

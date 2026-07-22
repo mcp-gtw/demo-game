@@ -26,5 +26,5 @@ class EnemySpec:
     flee_range: int = 0
     flee_when_attacked: bool = False
     spook_seconds: float = 0.0
-    wander_chance: float = 0.35
+    wander_pause: tuple[float, float] = (3.0, 10.0)
     loot: tuple[LootDrop, ...] = field(default_factory=tuple)

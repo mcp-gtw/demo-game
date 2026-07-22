@@ -488,7 +488,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "mcp-gtw"
-version = "0.0.4"
+version = "0.0.5"
 source = { editable = "../mcp-server" }
 dependencies = [
     { name = "fastapi" },
