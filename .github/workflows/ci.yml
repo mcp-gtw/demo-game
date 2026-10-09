@@ -15,16 +15,12 @@ jobs:
     env:
       UV_PYTHON: ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: mcp-gtw/mcp-gtw
-          path: mcp-server
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: mcp-gateway-demo
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
       - name: Install uv
         run: pip install uv
       - name: Create the environment

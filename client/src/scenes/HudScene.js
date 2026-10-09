@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { selfEntity } from "../helpers/store.js";
+import { TextButton } from "../ui/TextButton.js";
 import { Button } from "../ui/Button.js";
 import { HealthBar } from "../ui/HealthBar.js";
 import { DPR } from "../constants.js";
@@ -39,6 +40,11 @@ export class HudScene extends Phaser.Scene {
             this.statsButton.root,
         ]);
 
+        if (this.store.availableAuthMethods.length > 1 || this.store.selectedAuthMethod === "oauth") {
+            this.authButton = new TextButton(this, { text: "Switch / Sign out", onClick: () => this.store.switchAuth() });
+            this.layer.add(this.authButton.root);
+        }
+
         this.#layout();
         this.scale.on("resize", this.#layout, this);
         this.events.once("shutdown", () => this.scale.off("resize", this.#layout, this));
@@ -77,6 +83,7 @@ export class HudScene extends Phaser.Scene {
         const buttonX = width - MARGIN - 29;
         const buttonY = MARGIN + 29;
         this.statsButton.setPosition(buttonX, buttonY);
+        this.authButton?.setPosition(width - MARGIN - 100, height - MARGIN - 25);
 
         const panelWidth = Math.max(1, Math.min(340, width - MARGIN * 2));
         const panelHeight = Math.max(1, Math.min(430, height - MARGIN * 2 - 70));

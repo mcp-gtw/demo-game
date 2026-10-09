@@ -17,11 +17,14 @@ function ownToken() {
 }
 
 export class GameSocket {
-    constructor(baseUrl, handlers) {
+    constructor(baseUrl, handlers, connectionUrl = null) {
         this.baseUrl = baseUrl;
         this.handlers = handlers;
         this.socket = null;
-        this.token = ownToken();
+        this.token = connectionUrl ? null : ownToken();
+        this.connectionUrl = connectionUrl;
+        this.generation = 0;
+        this.stopped = false;
         this.latencyMs = null;
         this.reconnectAttempt = 0;
         this.reconnectTimer = null;
@@ -29,17 +32,57 @@ export class GameSocket {
     }
 
     connect() {
+        this.stopped = false;
         this.handlers.onStatus?.("connecting", this.latencyMs);
-        const url = `${this.baseUrl}?token=${encodeURIComponent(this.token)}`;
+
+        if (this.connectionUrl) {
+            const generation = ++this.generation;
+            Promise.resolve().then(() => this.connectionUrl()).then((url) => {
+                if (!this.stopped && generation === this.generation) {
+                    this.#open(url);
+                }
+            }).catch(() => {
+                if (!this.stopped && generation === this.generation) {
+                    this.handlers.onStatus?.("offline", null);
+                    this.#retry();
+                }
+            });
+            return;
+        }
+
+        this.#open(`${this.baseUrl}?token=${encodeURIComponent(this.token)}`);
+    }
+
+    disconnect() {
+        this.stopped = true;
+        this.generation += 1;
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+        this.#stopPing();
+        const socket = this.socket;
+        this.socket = null;
+        socket?.close();
+        this.latencyMs = null;
+    }
+
+    #open(url) {
         const socket = new WebSocket(url);
         this.socket = socket;
 
         socket.addEventListener("open", () => {
+            if (this.socket !== socket) {
+                return;
+            }
+
             this.reconnectAttempt = 0;
             this.handlers.onStatus?.("online", this.latencyMs);
             this.#startPing();
         });
-        socket.addEventListener("message", (event) => this.#onMessage(event.data));
+        socket.addEventListener("message", (event) => {
+            if (this.socket === socket) {
+                this.#onMessage(event.data);
+            }
+        });
         socket.addEventListener("close", () => this.#onClose(socket));
         socket.addEventListener("error", () => socket.close());
     }
@@ -87,6 +130,10 @@ export class GameSocket {
         this.latencyMs = null;
         this.#stopPing();
         this.handlers.onStatus?.("offline", this.latencyMs);
+        this.#retry();
+    }
+
+    #retry() {
         const backoff = Math.min(RECONNECT_MIN_MS * 2 ** this.reconnectAttempt, RECONNECT_MAX_MS);
         const delay = Math.round(backoff * (0.8 + Math.random() * 0.4));
         this.reconnectAttempt += 1;

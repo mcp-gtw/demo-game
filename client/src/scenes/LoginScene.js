@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { Clouds } from "../game/Clouds.js";
-import { claudeCommand, mcpJson } from "../helpers/mcp.js";
+import { claudeCommand, mcpJson, oauthClaudeCommand, oauthMcpJson } from "../helpers/mcp.js";
 import { DPR, INK, INK_SOFT, TEXT_DPR } from "../constants.js";
 import { Panel } from "../ui/Panel.js";
 import { TextButton } from "../ui/TextButton.js";
@@ -54,6 +54,20 @@ export class LoginScene extends Phaser.Scene {
         this.card.add(this.loginButton.root);
 
         this.optionButtons = [];
+        this.authButtons = [];
+
+        if (!this.store.selectedAuthMethod) {
+            this.loginButton.root.setVisible(false);
+            this.status.setText("Choose Token, or sign in and authorize MCP clients to control your game with OAuth.");
+            this.authButtons = this.store.availableAuthMethods.map((method) => new TextButton(this, {
+                text: method === "token" ? "Connect with Token" : "Connect with OAuth",
+                onClick: () => this.store.selectAuthMethod(method),
+            }));
+
+            for (const button of this.authButtons) {
+                this.card.add(button.root);
+            }
+        }
         this.#layout();
         this.scale.on("resize", this.#layout, this);
         this.events.once("shutdown", () => this.scale.off("resize", this.#layout, this));
@@ -68,7 +82,7 @@ export class LoginScene extends Phaser.Scene {
             this.status.setText("Point your agent at the connect options, then it calls login.");
         }
 
-        if (!this.enabled) {
+        if (!this.enabled && this.store.selectedAuthMethod) {
             this.status.setText(this.store.status === "offline" ? "Reconnecting…" : "Connecting…");
         }
     }
@@ -80,7 +94,16 @@ export class LoginScene extends Phaser.Scene {
 
         this.revealed = true;
         const info = this.store.session;
-        this.optionButtons = [
+
+        if (info.authMethod === "oauth") {
+            this.optionButtons = [
+                new TextButton(this, { text: "OAuth Endpoint", onClick: () => this.#open("OAuth", `Add this URL to your MCP host and complete its OAuth login and consent.\n\n${info.mcpUrl}`, { copies: [{ label: "Copy URL", value: info.mcpUrl }] }) }),
+                new TextButton(this, { text: "Claude Code (OAuth)", onClick: () => this.#open("Claude Code", oauthClaudeCommand(info.mcpUrl), { mono: true }) }),
+                new TextButton(this, { text: "MCP Config (OAuth)", onClick: () => this.#open("MCP Config", oauthMcpJson(info.mcpUrl), { mono: true }) }),
+                new TextButton(this, { text: "Tools", onClick: () => this.#openTools() }),
+            ];
+        } else {
+            this.optionButtons = [
             new TextButton(this, {
                 text: "Claude Code (CLI)",
                 onClick: () => {
@@ -92,6 +115,12 @@ export class LoginScene extends Phaser.Scene {
             new TextButton(this, { text: "Endpoint + Token", onClick: () => this.#openConnect(info) }),
             new TextButton(this, { text: "Tools", onClick: () => this.#openTools() }),
         ];
+
+        }
+
+        if (this.store.availableAuthMethods.length > 1 || info.authMethod === "oauth") {
+            this.optionButtons.push(new TextButton(this, { text: "Switch / Sign out", onClick: () => this.store.switchAuth() }));
+        }
 
         this.loginButton.root.setVisible(false);
 
@@ -160,7 +189,7 @@ export class LoginScene extends Phaser.Scene {
             text.setWordWrapWidth(inner).setPosition(centre, 0);
         }
 
-        const rows = this.revealed ? this.optionButtons : [this.loginButton];
+        const rows = this.authButtons.length ? this.authButtons : this.revealed ? this.optionButtons : [this.loginButton];
         const natural = Math.max(MIN_BUTTON_WIDTH, ...rows.map((button) => button.naturalWidth));
         const buttonWidth = Math.min(inner, natural);
 

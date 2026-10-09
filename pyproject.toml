@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.27"]
+requires = ["hatchling>=1.32.4,<2"]
 build-backend = "hatchling.build"
 
 [project]
@@ -8,24 +8,23 @@ version = "0.0.3"
 description = "A multiplayer, MCP-controlled action game built on top of mcp-gtw."
 requires-python = ">=3.12"
 dependencies = [
-    "mcp-gtw>=0.0.5",
-    "fastapi>=0.139,<1",
-    "pydantic>=2.13,<3",
-    "pydantic-settings>=2.14,<3",
-    "uvicorn[standard]>=0.51,<1",
+    "mcp-gtw>=0.0.6",
+    "httpx>=0.28.1,<1",
+    "pyjwt[crypto]>=2.15.1,<3",
+    "fastapi>=0.143.0,<1",
+    "pydantic>=2.14.0,<3",
+    "pydantic-settings>=2.15.0,<3",
+    "uvicorn[standard]>=0.54.0,<1",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "httpx>=0.28,<1",
-    "pytest>=9,<10",
-    "pytest-asyncio>=1.4,<2",
-    "pytest-cov>=7,<8",
-    "ruff>=0.15,<1",
+    "httpx>=0.28.1,<1",
+    "pytest>=9.1.1,<10",
+    "pytest-asyncio>=1.4.0,<2",
+    "pytest-cov>=7.1.0,<8",
+    "ruff>=0.16.10,<1",
 ]
-
-[tool.uv.sources]
-mcp-gtw = { path = "../mcp-server", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/app"]
@@ -44,6 +43,7 @@ fail_under = 100
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
+    "if TYPE_CHECKING:",
     "if __name__ == .__main__.:",
     ": \\.\\.\\.$",
 ]
@@ -56,4 +56,4 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B", "ASYNC", "RUF", "SIM"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app", "mcp_gtw"]
+known-first-party = ["app", "mcpgtw"]

@@ -26,3 +26,11 @@ export function mcpJson(url, token) {
         2,
     );
 }
+
+export function oauthClaudeCommand(url) {
+    return `claude mcp add --transport http mcp-game ${url}`;
+}
+
+export function oauthMcpJson(url) {
+    return JSON.stringify({ mcpServers: { "mcp-game": { type: "http", url } } }, null, 2);
+}

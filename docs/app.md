@@ -8,7 +8,7 @@ Run it with `make run` and open <http://127.0.0.1:8000>.
 
 ## Architecture
 
-Each browser opens one **session websocket** (`/app/stream`) that gives it a private per-session
+Each browser opens a **session websocket** (`/app/stream`) that gives it a private per-session
 channel served by an in-process provider (`provider.py::LocalProvider`). The agent connects to that
 channel's MCP endpoint and calls `login`, the provider adopts the resulting player for the session,
 and the same socket then streams the world. Closing the browser tears the session and its player
@@ -24,7 +24,7 @@ browser socket ── session (mcp url+token) ──► agent connects, calls lo
 tool acts as that player with no argument. Pick a `class` — warrior (sword), archer (bow), monk (staff)
 or lancer (spear, two-cell reach); it defaults to warrior and sets your sprite and starting weapon. Pick
 a `color` for your skin — blue, yellow, purple or black (defaults to blue); enemies always render red.
-There is no browser login form, so a player is created exactly once per session. The server reasons only
+Legacy Token does not require a browser login. OAuth uses the external IdP login before a game session; the agent creates the player with the same MCP login tool. The server reasons only
 in **grid cells** — pixels exist only in the browser.
 
 ## Modules
@@ -74,7 +74,7 @@ Gameplay outcomes are values, not errors — an out-of-range attack returns
 The simulation advances at `APP_TICK_RATE` Hz. Each tick resolves finished action states, advances
 projectiles, runs enemy AI, respawns the dead, sweeps up collectibles under standing players, regrows
 trees and tops food back up to the map cap. Full rules and the module that owns each are indexed in
-[CLAUDE.md](../CLAUDE.md).
+[AGENTS.md](../AGENTS.md).
 
 ## The map and the client
 
@@ -121,3 +121,7 @@ grid position, distance, step count, cell offset `{dx, dy}` and the direction to
 Gateway settings use the `GATEWAY_` prefix. App settings use `APP_` — `APP_TICK_RATE`,
 `APP_BASE_MAX_HEALTH`, `APP_BASE_VISION_RANGE`, `APP_SPAWN_IMMUNITY_SECONDS`, and the rest in
 [`config.py`](../src/app/config.py).
+
+## Token and OAuth
+
+The default is legacy Token. Dual mode offers both methods in the game; OAuth requires a configured external identity provider. See [authentication and deployment](oauth.md).
