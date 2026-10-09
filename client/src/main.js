@@ -3,6 +3,8 @@ import "./style.css";
 import { BootScene } from "./scenes/BootScene.js";
 import { DPR } from "./constants.js";
 import { GalleryScene } from "./scenes/GalleryScene.js";
+import { AuthController } from "./helpers/auth.js";
+import { OAuthGameSocket } from "./net/OAuthGameSocket.js";
 import { GameSocket } from "./net/GameSocket.js";
 import { GameScene } from "./scenes/GameScene.js";
 import { HudScene } from "./scenes/HudScene.js";
@@ -87,7 +89,7 @@ function restartGame() {
 }
 
 const wsScheme = location.protocol === "https:" ? "wss" : "ws";
-const socket = new GameSocket(`${wsScheme}://${location.host}/app/stream`, {
+const handlers = {
     onSession: (info) => {
         store.session = { ...info, mcpUrl: mcpEndpoint(info.mcpUrl, location.origin) };
     },
@@ -129,15 +131,45 @@ const socket = new GameSocket(`${wsScheme}://${location.host}/app/stream`, {
             store.online = 0;
         }
     },
-});
+};
 
-store.requestStats = () => socket.requestStats();
+function resetAuth() {
+    store.session = null;
+    store.playerId = null;
+    store.phase = "menu";
+    store.catalog = null;
+    store.map = null;
+    store.buffer = [];
+    store.me = null;
+    started = false;
+
+    if (game?.isBooted && booted) {
+        game.scene.stop("game");
+        game.scene.stop("hud");
+        game.scene.start("login", { store });
+    }
+}
+
+const baseUrl = `${wsScheme}://${location.host}/app/stream`;
+const auth = new AuthController({ store, reset: resetAuth,
+    createToken: () => new GameSocket(baseUrl, handlers),
+    createOAuth: () => new OAuthGameSocket(baseUrl, handlers),
+});
+store.selectAuthMethod = (method) => auth.select(method).catch(() => { store.status = "offline"; });
+store.switchAuth = () => auth.switchMethod().catch(() => { store.status = "offline"; });
+store.requestStats = () => auth.requestStats();
 
 async function pollInfo() {
     try {
         const info = await (await fetch("/app/info")).json();
         store.online = info.playersOnline;
         store.tools = info.tools ?? [];
+        const changed = JSON.stringify(store.availableAuthMethods) !== JSON.stringify(info.authMethods);
+        store.availableAuthMethods = info.authMethods;
+
+        if (changed && booted && !store.selectedAuthMethod) {
+            game.scene.start("login", { store });
+        }
     } catch {
         // the landing shows the last known values until the next poll succeeds
     }
@@ -145,10 +177,12 @@ async function pollInfo() {
 
 async function boot() {
     await loadFonts();
+    await pollInfo();
     bootGame();
-    pollInfo();
     const timer = setInterval(() => (store.phase === "game" ? clearInterval(timer) : pollInfo()), 3000);
-    socket.connect();
+    if (store.availableAuthMethods.length === 1 && store.availableAuthMethods[0] === "token") {
+        store.selectAuthMethod("token");
+    }
 }
 
 boot();

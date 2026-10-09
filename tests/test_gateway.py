@@ -10,7 +10,7 @@ from app.config import AppSettings
 from app.gateway import AppGateway, _channel_id_for
 from app.provider import LocalProvider
 from app.session import Session
-from mcp_gtw.errors import ChannelCapacityError
+from mcpgtw.errors import ChannelCapacityError
 
 TOKEN = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 _DISCONNECT = object()
@@ -72,7 +72,7 @@ def test_http_surface():
         assert client.get("/play").status_code == 404
 
         info = client.get("/app/info").json()
-        assert set(info) == {"playersOnline", "tools"}
+        assert set(info) == {"playersOnline", "tools", "authMethods"}
         assert info["playersOnline"] == 0
         names = {tool["name"] for tool in info["tools"]}
         assert {"login", "move", "speak"} <= names
@@ -247,11 +247,11 @@ async def test_second_login_on_a_session_is_rejected():
     await provider.start()
 
     first = await channel.execute_tool(name="login", arguments={"name": "neo"})
-    assert not first.isError
+    assert not first.is_error
     assert gateway.rooms.default.world.players[session.player_id].name == "neo"
 
     second = await channel.execute_tool(name="login", arguments={"name": "neo2"})
-    assert second.isError
+    assert second.is_error
     names = {player.name for player in gateway.rooms.default.world.players.values()}
     assert "neo2" not in names
     await drain()
@@ -268,11 +268,11 @@ async def test_provider_serves_gameplay_tools():
 
     # a tool before login is rejected, since the session has no player yet
     before = await channel.execute_tool(name="get_player", arguments={})
-    assert before.isError
+    assert before.is_error
 
     await channel.execute_tool(name="login", arguments={"name": "neo"})
     who = await channel.execute_tool(name="get_player", arguments={})
-    assert who.structuredContent["name"] == "neo"
+    assert who.structured_content["name"] == "neo"
     await drain()
 
 
@@ -288,7 +288,7 @@ async def test_provider_reports_an_unexpected_tool_failure(monkeypatch):
 
     monkeypatch.setattr(session.room.game, "get_player", boom)
     result = await channel.execute_tool(name="get_player", arguments={})
-    assert result.isError
+    assert result.is_error
     await drain()
 
 

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Annotated, Literal
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+from mcpgtw.config import validate_oauth_url
 
 
 class AppSettings(BaseSettings):
@@ -11,7 +15,56 @@ class AppSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        hide_input_in_errors=True,
     )
+
+    mcp_auth_mode: Literal["legacy", "oauth", "dual"] = "legacy"
+    public_base_url: str = ""
+    oidc_issuer: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: SecretStr = Field(default=SecretStr(""), repr=False)
+    session_cookie_name: str = "game_session"
+    allowed_browser_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    oauth_mcp_client_ids: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    oauth_database_path: str = ""
+    oauth_allow_localhost_http: bool = False
+    websocket_ticket_ttl_seconds: float = Field(default=30, gt=0, le=60)
+    session_idle_seconds: float = Field(default=900, gt=0, allow_inf_nan=False)
+
+    @field_validator("allowed_browser_origins", "oauth_mcp_client_ids", mode="before")
+    @classmethod
+    def parse_csv(cls, value: object) -> object:
+        return (
+            [part.strip() for part in value.split(",") if part.strip()]
+            if isinstance(value, str)
+            else value
+        )
+
+    @model_validator(mode="after")
+    def validate_browser_oauth(self) -> AppSettings:
+        if self.mcp_auth_mode == "legacy":
+            return self
+
+        for url in [self.public_base_url, self.oidc_issuer, *self.allowed_browser_origins]:
+            validate_oauth_url(url, self.oauth_allow_localhost_http)
+
+        if (
+            not self.oidc_client_id
+            or not self.oidc_client_secret.get_secret_value()
+            or not self.oauth_database_path
+            or self.oauth_database_path == ":memory:"
+            or not self.oauth_mcp_client_ids
+            or not self.allowed_browser_origins
+            or self.public_base_url.endswith("/")
+        ):
+            raise ValueError(
+                "OAuth requires identity, durable sessions, origins and approved MCP clients"
+            )
+
+        if not self.session_cookie_name.isidentifier():
+            raise ValueError("Invalid session cookie name")
+
+        return self
 
     # simulation rate in ticks per second
     tick_rate: float = 15.0

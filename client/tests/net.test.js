@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { OAuthGameSocket } from "../src/net/OAuthGameSocket.js";
 import { GameSocket } from "../src/net/GameSocket.js";
 
 class FakeWebSocket {
@@ -175,4 +176,103 @@ describe("GameSocket", () => {
         ws.close();
         vi.advanceTimersByTime(10000);
     });
+});
+
+const settle = async () => { for (let i = 0; i < 12; i++) { await Promise.resolve(); } };
+
+it("disconnect cancels a reconnect and preserves the Token UUID", () => {
+    const socket = new GameSocket("ws://host/app/stream", handlers());
+    socket.disconnect();
+    socket.connect();
+    const ws = lastSocket();
+    ws.emit("open");
+    socket.disconnect();
+    vi.advanceTimersByTime(10000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(ws.readyState).toBe(3);
+    expect(localStorage.getItem("mcp-game-token")).toBe(UUID);
+});
+
+it("OAuth uses a fresh one-use ticket on every reconnect without localStorage", async () => {
+    let number = 0;
+    const ticket = vi.fn(async () => ({ ok: true, json: async () => ({ ticket: `ticket-${++number}` }) }));
+    const socket = new OAuthGameSocket("wss://host/app/stream", handlers(), ticket);
+    socket.connect();
+    await settle();
+    expect(lastSocket().url).toBe("wss://host/app/stream?ticket=ticket-1");
+    expect(localStorage.getItem("mcp-game-token")).toBeNull();
+    lastSocket().emit("close");
+    await vi.advanceTimersByTimeAsync(1000);
+    await settle();
+    expect(lastSocket().url).toBe("wss://host/app/stream?ticket=ticket-2");
+    socket.disconnect();
+});
+
+it("ticket failures retry OAuth and never open a Token socket", async () => {
+    const ticket = vi.fn(async () => ({ ok: false }));
+    const socket = new OAuthGameSocket("wss://host/app/stream", handlers(), ticket);
+    socket.connect();
+    await settle();
+    expect(ticket).toHaveBeenCalledOnce();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    socket.disconnect();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(ticket).toHaveBeenCalledOnce();
+});
+
+it("late ticket resolutions and rejections cannot reopen a disconnected socket", async () => {
+    let resolve;
+    let reject;
+    const pending = new Promise((res, rej) => { resolve = res; reject = rej; });
+    const socket = new GameSocket("wss://host/app/stream", {}, () => pending);
+    socket.connect();
+    socket.disconnect();
+    resolve("wss://host/app/stream?ticket=old");
+    await settle();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    const rejected = new Promise((res, rej) => { reject = rej; });
+    const second = new GameSocket("wss://host/app/stream", {}, () => rejected);
+    second.connect();
+    second.disconnect();
+    reject(new Error("offline"));
+    await settle();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+});
+
+it("only the latest connection attempt may open a websocket", async () => {
+    let resolve;
+    const first = new Promise((res) => { resolve = res; });
+    const urls = vi.fn().mockReturnValueOnce(first).mockResolvedValueOnce("wss://host/new");
+    const socket = new GameSocket("wss://host/app/stream", {}, urls);
+    socket.connect();
+    await settle();
+    socket.connect();
+    await settle();
+    resolve("wss://host/old");
+    await settle();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(lastSocket().url).toBe("wss://host/new");
+    socket.disconnect();
+});
+
+it("OAuth default fetch requests a ticket without exposing Bearer credentials", async () => {
+    const fetcher = vi.fn(async () => ({ ok: true, json: async () => ({ ticket: "one" }) }));
+    vi.stubGlobal("fetch", fetcher);
+    const socket = new OAuthGameSocket("wss://host/app/stream", {});
+    socket.connect();
+    await settle();
+    expect(fetcher).toHaveBeenCalledWith("/app/oauth/ticket", { method: "POST" });
+    socket.disconnect();
+});
+
+it("stale open and message events cannot restore an abandoned method", () => {
+    const h = handlers();
+    const socket = new GameSocket("ws://host/app/stream", h);
+    socket.connect();
+    const ws = lastSocket();
+    socket.disconnect();
+    ws.emit("open");
+    ws.emit("message", { data: JSON.stringify({ type: "session", mcpToken: "old" }) });
+    expect(h.onSession).not.toHaveBeenCalled();
+    expect(h.onStatus).not.toHaveBeenCalledWith("online", null);
 });

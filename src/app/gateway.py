@@ -16,16 +16,25 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
+from app.browser_identity import BrowserIdentity, OidcBrowserIdentity
+from app.browser_oauth import BrowserOAuth
+from app.browser_session import BrowserSessionStore
 from app.catalog import build_catalog
 from app.config import AppSettings, get_app_settings
+from app.gateway_settings import AppGatewaySettings
+from app.oauth_websocket import OAuthWebSocket
 from app.provider import LocalProvider
 from app.room_manager import RoomManager
 from app.session import Session
 from app.tools import TOOL_DEFINITIONS
-from mcp_gtw.channel import Channel
-from mcp_gtw.config import GatewaySettings
-from mcp_gtw.errors import ChannelCapacityError
-from mcp_gtw.gateway import Gateway
+from mcpgtw.channel import Channel
+from mcpgtw.config import GatewaySettings
+from mcpgtw.errors import ChannelCapacityError, GatewayConfigurationError
+from mcpgtw.gateway import Gateway
+from mcpgtw.oauth.channel_access import DenyUnlessGranted
+from mcpgtw.oauth.channel_grants import ChannelGrantStore
+from mcpgtw.oauth.sqlite_grants import SqliteChannelGrantStore
+from mcpgtw.oauth.token_verifier import AccessTokenVerifier
 
 logger = logging.getLogger(__name__)
 
@@ -59,15 +68,61 @@ class AppGateway(Gateway):
 
     mcp_server_name = "app"
 
-    def __init__(self, app_settings: AppSettings | None = None) -> None:
+    def __init__(
+        self,
+        app_settings: AppSettings | None = None,
+        *,
+        gateway_settings: GatewaySettings | None = None,
+        browser_identity: BrowserIdentity | None = None,
+        browser_sessions: BrowserSessionStore | None = None,
+        channel_grants: ChannelGrantStore | None = None,
+        access_token_verifier: AccessTokenVerifier | None = None,
+    ) -> None:
         self.app_settings = app_settings or get_app_settings()
         self.rooms = RoomManager(self.app_settings)
         self._sessions: dict[str, Session] = {}
+        self._oauth_owners: dict[tuple[str, str], str] = {}
         self._session_lock = asyncio.Lock()
-        # the MCP endpoint runs stateless so the agent's connection survives a server restart: there
-        # is no in-memory transport session to lose, so its stored url+token keep working across a
-        # restart with no reconnect. every other GATEWAY_ env var is still read as usual
-        super().__init__(GatewaySettings(mcp_stateless=True))
+        settings = gateway_settings or AppGatewaySettings()
+        mode = self.app_settings.mcp_auth_mode
+        self._owned_browser_identity: OidcBrowserIdentity | None = None
+        self.browser_oauth: BrowserOAuth | None = None
+        self.channel_grants = channel_grants
+
+        if mode != "legacy":
+            if (
+                settings.oauth_mode == "off"
+                or settings.oauth_allow_static_mcp_tokens != (mode == "dual")
+                or self.app_settings.oidc_issuer not in settings.oauth_authorization_servers
+                or settings.oauth_resource_url != self.app_settings.public_base_url + "/mcp"
+            ):
+                raise GatewayConfigurationError("Inconsistent game and gateway OAuth configuration")
+
+            self.channel_grants = channel_grants or SqliteChannelGrantStore(
+                self.app_settings.oauth_database_path
+            )
+            super().__init__(
+                settings,
+                access_token_verifier=access_token_verifier,
+                channel_access=DenyUnlessGranted(self.channel_grants),
+                static_channel_eligible=lambda channel: (
+                    channel.metadata.get("auth_method") == "token"
+                ),
+            )
+            if browser_identity is None:
+                self._owned_browser_identity = OidcBrowserIdentity(self.app_settings)
+                browser_identity = self._owned_browser_identity
+
+            self.browser_oauth = BrowserOAuth(
+                self,
+                browser_identity,
+                browser_sessions or BrowserSessionStore(self.app_settings.oauth_database_path),
+            )
+        else:
+            if settings.oauth_mode != "off":
+                raise GatewayConfigurationError("Legacy game mode requires OAuth off")
+
+            super().__init__(settings)
 
     @contextlib.asynccontextmanager
     async def serve(self) -> AsyncIterator[None]:
@@ -86,6 +141,9 @@ class AppGateway(Gateway):
 
             await asyncio.gather(simulation, *teardowns, return_exceptions=True)
 
+            if self._owned_browser_identity is not None:
+                await self._owned_browser_identity.client.aclose()
+
     async def _run_simulation(self, dt: float) -> None:
         while True:
             for room in self.rooms.all():
@@ -98,16 +156,41 @@ class AppGateway(Gateway):
             await asyncio.sleep(dt)
 
     async def home(self) -> FileResponse:
-        return FileResponse(WEB_DIR / "dist" / "index.html")
+        headers = {}
+
+        if self.browser_oauth is not None:
+            websocket_origin = self.app_settings.public_base_url.replace(
+                "https://", "wss://", 1
+            ).replace("http://", "ws://", 1)
+            headers = {
+                "Content-Security-Policy": (
+                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                    "img-src 'self' data: blob:; media-src 'self' blob:; "
+                    f"connect-src 'self' {websocket_origin}; "
+                    "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+                ),
+                "Referrer-Policy": "no-referrer",
+                "X-Content-Type-Options": "nosniff",
+            }
+
+        return FileResponse(WEB_DIR / "dist" / "index.html", headers=headers)
 
     def register_routes(self, app: FastAPI) -> None:
         super().register_routes(app)
+        if self.browser_oauth is not None:
+            self.browser_oauth.register_routes(app)
+
         app.add_api_route("/app/info", self.info, methods=["GET"])
         app.add_api_websocket_route("/app/stream", self.stream_endpoint)
         app.mount("/static", RevalidatingStaticFiles(directory=WEB_DIR), name="static")
 
     async def info(self) -> dict[str, Any]:
         return {
+            "authMethods": ["token"]
+            if self.app_settings.mcp_auth_mode == "legacy"
+            else ["oauth"]
+            if self.app_settings.mcp_auth_mode == "oauth"
+            else ["token", "oauth"],
             "playersOnline": sum(len(room.world.players) for room in self.rooms.all()),
             "tools": [
                 {"name": tool["name"], "description": tool["description"]}
@@ -116,13 +199,40 @@ class AppGateway(Gateway):
         }
 
     async def stream_endpoint(self, websocket: WebSocket) -> None:
-        await websocket.accept()
-        session = await self._acquire_session(websocket.query_params.get("token"))
+        token = websocket.query_params.get("token")
+        ticket = websocket.query_params.get("ticket")
+
+        if "token" in websocket.query_params and "ticket" in websocket.query_params:
+            await websocket.close(code=1008)
+            return
+
+        if ticket and self.browser_oauth is not None:
+            session = await self.browser_oauth.consume_ticket(websocket, ticket)
+        elif self.app_settings.mcp_auth_mode != "oauth" and not ticket:
+            session = await self._acquire_session(token)
+        else:
+            session = None
 
         if session is None:
             await websocket.close(code=1008)
             return
 
+        if session.auth_method == "oauth":
+            original = websocket
+
+            async def authorized() -> bool:
+                browser = await self.browser_oauth.store.get(
+                    "session", original.cookies.get(self.app_settings.session_cookie_name, "")
+                )
+                return (
+                    browser is not None
+                    and browser["consented"]
+                    and self.registry.get(session.channel_id) is not None
+                )
+
+            websocket = OAuthWebSocket(original, authorized)
+
+        await websocket.accept()
         self._session_connect(session)
 
         try:
@@ -131,6 +241,11 @@ class AppGateway(Gateway):
         except WebSocketDisconnect:
             pass
         finally:
+            if self.browser_oauth is not None:
+                self.browser_oauth.disconnected(
+                    original if session.auth_method == "oauth" else websocket, session.channel_id
+                )
+
             session.room.hub.unsubscribe(websocket)
             self._session_disconnect(session)
 
@@ -171,7 +286,10 @@ class AppGateway(Gateway):
 
         try:
             return await self.create_channel(
-                channel_id=channel_id, mcp_token=f"mcp-{token}", ttl_seconds=float("inf")
+                channel_id=channel_id,
+                mcp_token=f"mcp-{token}",
+                ttl_seconds=float("inf"),
+                metadata={"auth_method": "token"},
             )
         except ChannelCapacityError:
             return self.registry.get(channel_id)
@@ -213,9 +331,15 @@ class AppGateway(Gateway):
         room.hub.subscribe(websocket)
 
     async def _handle_message(self, websocket: WebSocket, session: Session, text: str) -> None:
+        if len(text.encode()) > 4096:
+            return
+
         try:
             message = json.loads(text)
         except json.JSONDecodeError:
+            return
+
+        if not isinstance(message, dict):
             return
 
         kind = message.get("type")
@@ -229,6 +353,20 @@ class AppGateway(Gateway):
                 await websocket.send_json({"type": "me", "player": state})
 
     def _session_message(self, websocket: WebSocket, session: Session) -> dict[str, Any]:
+        if session.auth_method == "oauth":
+            return {
+                "type": "session",
+                "authMethod": "oauth",
+                "mcpUrl": self.settings.oauth_resource_url + "/" + session.channel_id,
+            }
+
+        if self.app_settings.public_base_url:
+            return {
+                "type": "session",
+                "mcpUrl": self.app_settings.public_base_url + "/mcp/" + session.channel_id,
+                "mcpToken": session.mcp_token,
+            }
+
         http_scheme = "https" if websocket.url.scheme == "wss" else "http"
         host = websocket.url.netloc
 
@@ -236,6 +374,53 @@ class AppGateway(Gateway):
             "type": "session",
             "mcpUrl": f"{http_scheme}://{host}/mcp/{session.channel_id}",
             "mcpToken": session.mcp_token,
+        }
+
+    async def acquire_oauth_session(self, issuer: str, subject: str) -> Session:
+        async with self._session_lock:
+            owner = (issuer, subject)
+            channel_id = self._oauth_owners.get(owner)
+            existing = self._sessions.get(channel_id)
+
+            if existing is not None:
+                if existing.teardown is not None:
+                    existing.teardown.cancel()
+                    existing.teardown = None
+
+                return existing
+
+            channel = await self.create_channel(
+                metadata={"auth_method": "oauth"}, ttl_seconds=float("inf")
+            )
+            session = Session(channel.channel_id, "", self.rooms.default, auth_method="oauth")
+            await LocalProvider(channel, session).start()
+            self._sessions[channel.channel_id] = session
+            self._oauth_owners[owner] = channel.channel_id
+            return session
+
+    async def revoke_oauth_channel(self, channel_id: str) -> None:
+        async with self._session_lock:
+            session = self._sessions.pop(channel_id, None)
+
+            if session is None or session.auth_method != "oauth":
+                return
+
+            if session.teardown is not None:
+                session.teardown.cancel()
+
+            if session.player_id is not None:
+                session.room.world.remove_player(session.player_id)
+
+            await self.registry.remove_channel(channel_id)
+
+    async def on_channel_removed(self, channel: Channel) -> None:
+        await super().on_channel_removed(channel)
+
+        if self.channel_grants is not None:
+            await self.channel_grants.remove_channel(channel.channel_id)
+
+        self._oauth_owners = {
+            owner: cid for owner, cid in self._oauth_owners.items() if cid != channel.channel_id
         }
 
     def _session_connect(self, session: Session) -> None:

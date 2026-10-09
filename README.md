@@ -51,7 +51,8 @@ make lint           # ruff check + format check
 ## 🧩 How it is built on the gateway
 
 ```python
-from mcp_gtw.gateway import Gateway
+from mcpgtw.gateway import Gateway
+
 
 class AppGateway(Gateway):
     async def serve(self):
@@ -75,7 +76,7 @@ the game tools run server-side through an in-process provider. See the
 | --- | --- |
 | [The game](docs/app.md) | Architecture, tools, endpoints and the world. |
 | [Authoring maps](docs/maps.md) | Editing and creating maps in the Tiled editor. |
-| [CLAUDE.md](CLAUDE.md) | Every game rule and the module that owns it. |
+| [AGENTS.md](AGENTS.md) | Every game rule and the module that owns it. |
 
 ## 🗂️ Layout
 
@@ -99,7 +100,7 @@ the game tools run server-side through an in-process provider. See the
 
 - Python 3.12+ — tested on 3.12, 3.13 and 3.14 in CI
 - [`uv`](https://docs.astral.sh/uv/)
-- Node 22+ and npm (to build the Vite client)
+- Node 22.22.2+ and npm (to build the Vite client)
 - A modern browser and any MCP client
 
 ## 🎨 Credits
@@ -121,3 +122,7 @@ If this project saved you time, consider supporting it:
 Made with care by [Paulo Coutinho](https://github.com/paulocoutinhox).
 
 Licensed under [MIT](LICENSE.md).
+
+## Token and OAuth
+
+The default is legacy Token. Dual mode offers both methods in the game; OAuth requires a configured external identity provider. See [authentication and deployment](docs/oauth.md).

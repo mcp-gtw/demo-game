@@ -8,8 +8,8 @@ from app.errors import AppError, CommandError
 from app.game import GameService
 from app.session import Session
 from app.tools import TOOL_DEFINITIONS, dispatch
-from mcp_gtw import protocol
-from mcp_gtw.channel import Channel
+from mcpgtw import protocol
+from mcpgtw.channel import Channel
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +54,14 @@ class LocalProvider:
             self.channel.handle_result(
                 {"type": protocol.RESULT, "requestId": request_id, "error": str(exc)}
             )
-        except Exception as exc:
+        except Exception:
             logger.exception("Tool %s failed unexpectedly", params.get("name"))
             self.channel.handle_result(
-                {"type": protocol.RESULT, "requestId": request_id, "error": str(exc)}
+                {
+                    "type": protocol.RESULT,
+                    "requestId": request_id,
+                    "error": "Provider request failed",
+                }
             )
 
     def _run(self, name: str | None, arguments: dict[str, Any]) -> dict[str, Any]:

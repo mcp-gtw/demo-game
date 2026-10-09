@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 Guidance for working in this repository.
 
@@ -11,8 +11,7 @@ authoritative grid world, its HTTP/WebSocket surface and a self-hosted Phaser cl
 
 The internal package name is intentionally generic (`app`) so the demo is easy to port or reuse.
 
-It depends on `mcp-gtw`. Locally `[tool.uv.sources]` points at the sibling `../mcp-server` checkout.
-In Docker/PyPI it resolves from the index.
+It depends on `mcp-gtw>=0.0.6` from PyPI; local development, CI and Docker use the same locked release.
 
 ## Architecture (per-browser session, MCP-only login, camera follows your player)
 
@@ -223,7 +222,7 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   forever** — a reload, a reopen, even a server restart yields the identical connection, so the agent's
   mcp config never needs reinstalling. A missing or malformed token closes the socket (`1008`) — nothing
   is minted. This is the gateway's "client-supplied token" recipe adapted to the app's session model.
-  To make that promise hold across a restart the gateway forces **`GatewaySettings(mcp_stateless=True)`**
+  To make that promise hold across a restart the game defaults to **`AppGatewaySettings(mcp_stateless=True)`**, configurable through `GATEWAY_MCP_STATELESS`
   (`gateway.py`): the MCP transport keeps no in-memory session id, so a client's stored url+token keep
   working after the server restarts (once the page reopens to recreate the channel) with no MCP
   reconnect — a stateful transport would 404 the agent's cached session id and force a reconfigure.
@@ -480,3 +479,5 @@ trees 192×256 or 192×192 per variant). It is
 HiDPI (`Scale.NONE` sized to `window × DPR`, `roundPixels`, world textures at nearest filtering), so it
 adapts to any resolution. The look is verified during development with headless-Chromium smoke runs
 (login → game render → combat → resize, asserting zero console errors), not by committed pixel tests.
+
+- **OAuth** — public MCP authorization and private provider credential boundaries: [docs/oauth.md](docs/oauth.md).

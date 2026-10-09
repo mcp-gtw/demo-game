@@ -37,8 +37,14 @@ coverage: client ## Run the python and client suites with their coverage gates
 run: client ## Serve the game on 127.0.0.1:8000
 	uv run python -m app.main
 
-docker-build: ## Build the Docker image (override IMAGE=...)
-	docker build -t $(IMAGE) .
-
 docker-run: docker-build ## Build then run the image, serving on 127.0.0.1:8000
 	docker run --rm -p 8000:8000 $(IMAGE)
+
+docker-build: ## Build the game image with the locked PyPI dependencies
+	docker build -t $(IMAGE) .
+
+oauth-smoke: client ## Run the local HTTPS Token/OAuth browser integration
+	uv run python tests/e2e/run.py
+
+proxy-smoke: ## Test the built mcp-gtw-game:oauth image through local nginx HTTPS
+	uv run python tests/e2e/proxy.py

@@ -13,6 +13,7 @@ class Session:
     channel_id: str
     mcp_token: str
     room: Room
+    auth_method: str = "token"
     logged_in: asyncio.Event = field(default_factory=asyncio.Event)
     player_id: str | None = None
     connections: int = 0

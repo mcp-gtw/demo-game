@@ -2,6 +2,10 @@
 
 export function createStore() {
     return {
+        availableAuthMethods: [],
+        selectedAuthMethod: null,
+        selectAuthMethod: null,
+        switchAuth: null,
         catalog: null,
         map: null,
         buffer: [],

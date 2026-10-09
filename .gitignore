@@ -22,3 +22,5 @@ node_modules
 client/node_modules/
 src/app/web/dist/
 
+# Local coverage output is not part of the OAuth change.
+client/coverage/
