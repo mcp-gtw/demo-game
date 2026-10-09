@@ -510,7 +510,8 @@ async def test_oidc_signed_identity_token_and_pkce(tmp_path):
             await identity.authorization_url("state", "nonce", "challenge")
 
 
-async def test_game08_oauth_stream_with_real_websocket_scope(gateway):
+@pytest.mark.parametrize("handshake_delay", [0, 0.1])
+async def test_game08_oauth_stream_with_real_websocket_scope(gateway, handshake_delay):
     async with client_for(gateway) as client:
         await login(client)
         await client.post("/app/oauth/consent")
@@ -520,21 +521,34 @@ async def test_game08_oauth_stream_with_real_websocket_scope(gateway):
         queue = asyncio.Queue()
         queue.put_nowait({"type": "websocket.connect"})
         sent = []
+        frame_sent = asyncio.Event()
 
         async def receive():
-            return await queue.get()
+            message = await queue.get()
+
+            if message["type"] == "websocket.connect":
+                await asyncio.sleep(handshake_delay)
+
+            return message
 
         async def send(message):
             sent.append(message)
 
+            if "text" in message:
+                frame_sent.set()
+
         websocket = WebSocket(template.scope, receive, send)
         task = asyncio.create_task(gateway.stream_endpoint(websocket))
-        await asyncio.sleep(0.05)
-        session_message = next(json.loads(m["text"]) for m in sent if "text" in m)
-        assert session_message["authMethod"] == "oauth"
-        assert "mcpToken" not in session_message
-        queue.put_nowait({"type": "websocket.disconnect", "code": 1000})
-        await task
+
+        try:
+            await asyncio.wait_for(frame_sent.wait(), timeout=5)
+            session_message = next(json.loads(m["text"]) for m in sent if "text" in m)
+            assert session_message["authMethod"] == "oauth"
+            assert "mcpToken" not in session_message
+        finally:
+            queue.put_nowait({"type": "websocket.disconnect", "code": 1000})
+            await asyncio.wait_for(task, timeout=5)
+
         session = next(iter(gateway._sessions.values()))
         await session.teardown
         assert gateway.registry.get(session.channel_id) is None
