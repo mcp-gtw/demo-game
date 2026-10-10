@@ -124,4 +124,4 @@ Gateway settings use the `GATEWAY_` prefix. App settings use `APP_` — `APP_TIC
 
 ## Token and OAuth
 
-The default is legacy Token. Dual mode offers both methods in the game; OAuth requires a configured external identity provider. See [authentication and deployment](oauth.md).
+Token is the default. Dual mode offers Token and OAuth in the same game. OAuth can use the embedded authorization server on the game domain or a configured external identity provider. See [authentication and deployment](oauth.md).

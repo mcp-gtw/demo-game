@@ -11,7 +11,18 @@ authoritative grid world, its HTTP/WebSocket surface and a self-hosted Phaser cl
 
 The internal package name is intentionally generic (`app`) so the demo is easy to port or reuse.
 
-It depends on `mcp-gtw>=0.0.6` from PyPI; local development, CI and Docker use the same locked release.
+It requires `mcp-gtw>=0.0.7`; the sibling feature checkout is locked for coordinated development until that release is published. See [docs/oauth.md](docs/oauth.md) for deployment.
+
+## Documentation map
+
+- **OAuth** — public MCP authorization and private provider credential boundaries: [docs/oauth.md](docs/oauth.md).
+- **OAuth budgets and scoped grants** — BFF limits are configurable by IP and verified account,
+  and grants retain explicit client scopes. Extension points and invariants: [docs/oauth.md](docs/oauth.md).
+- **Full OAuth acceptance checklist** — [gateway checklist](../mcp-gtw/docs/oauth-implementation-checklist.md)
+  tracks architecture, SEC/GAME/SDK/HOST/UPG requirements and external checks.
+- **Coordinated CI** — configure GATEWAY_INTEGRATION_SHA as the exact gateway commit. The gateway
+  OAuth acceptance workflow checks out all three full SHAs and runs Chrome/Inspector/Docker tests.
+  See [docs/oauth.md](docs/oauth.md) and [tests/e2e/README.md](tests/e2e/README.md).
 
 ## Architecture (per-browser session, MCP-only login, camera follows your player)
 
@@ -20,22 +31,27 @@ The gateway is a relay. Each browser opens **one session websocket** (`/app/stre
 that channel's MCP endpoint and calls `login`, the provider **adopts** the resulting player for the
 session, and the same websocket then streams the world. Everything after login is via MCP.
 
-There is **no browser login form** — `login` is an MCP tool, so a player is created exactly once per
-session, and there is no way to end up with two players. Positions are always **grid cells (1, 2, 3…)**
+The MCP `login` tool creates the playable character exactly once per session. OAuth account sign-in
+is a separate browser flow and never creates a player. Positions are always **grid cells (1, 2, 3…)**
 on the server (pixels exist only in the browser, `tile_size` is a render hint).
 
-Flow: browser opens the socket with its stored token → server derives the stable channel and sends the
+Token flow: browser opens the socket with its stored token → server derives the stable channel and sends the
 MCP url + token → agent connects and calls `login` → provider adopts the player, socket sends `login` +
 catalog + map + snapshots → the page drops into the game following **only** that player (fixed zoom, no
 picker, no zoom, no drag). Closing the browser tears the session down after a short grace, removing the
 player (a reload within the grace keeps the same character; the token stays valid regardless). The
 stats panel is fed by `{type: "me"}` over the same socket.
 
+OAuth uses an account-owned random channel and one-use cookie-bound socket tickets. Token and OAuth
+can run simultaneously. Authentication and persistence contracts: [docs/oauth.md](docs/oauth.md).
+
 ## Layout (`src/app/`)
 
 - `gateway.py` — `AppGateway(Gateway)`: ticks and broadcasts **every room** in `serve`, drives the session
   websocket lifecycle (create/resume, wait-for-login, stream, teardown) and adds `/app/info`,
   `/app/stream`, `/static` and home. `RevalidatingStaticFiles` serves the client `no-cache`.
+- `oauth/` — browser BFF, embedded identity and consent, durable sessions/tickets, rate limits and
+  account channel ownership. Extension contracts: [docs/oauth.md](docs/oauth.md).
 - `room.py` — `Room`: one isolated game world with its own `World`, `GameService` and `StreamHub`.
 - `room_manager.py` — `RoomManager`: holds every room, guarantees a default room (`"world"`) from
   startup and can `create` more; the architecture is multi-room even while one room is in use.
@@ -196,7 +212,7 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
 - `tests/` — `vitest` unit tests over `helpers` and `net` at 100% coverage (`vitest.config.js` scopes
   the coverage gate to those two directories). The Phaser view classes (scenes, UI kit, `EntityView`,
   `Clouds`) carry no automated tests: they are guarded by the type/build check (`vite build`) and
-  verified manually with headless-Chromium smoke runs during development, not in CI.
+  verified with local headless-Chromium smokes and the coordinated gateway integration workflow.
 
 ## Game rules and where each one lives
 
@@ -424,9 +440,9 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
 ## Conventions
 
 `uv` + ruff `line-length = 100` for Python (**100% branch coverage gate** over the whole `app`
-package); `vite` + `vitest` for the client (one class per file, **100% coverage** over `helpers`/`net`
-only — the `vitest.config.js` gate does not cover the Phaser view layer, which is guarded by the build
-and manual smoke runs). Empty `__init__.py`, code and comments
+package); `vite` + `vitest` for the client (one class per file, **100% coverage** over helpers/net and LoginScene
+ — the `vitest.config.js` gate does not cover the Phaser view layer, which is guarded by the build
+and actual Chrome smoke runs). Empty `__init__.py`, code and comments
 in **English**, comments **rare** (non-obvious intent only, lowercase for single-line `#`/`//`, no
 narration, no section separators), no semicolons splitting sentences, no legacy/back-compat/fallbacks,
 single-line signatures/calls where they fit. Separate blocks of different responsibility with a blank
@@ -441,6 +457,10 @@ make lint       # ruff
 make test       # pytest + vitest
 make coverage   # both suites with their 100% coverage gates
 make run        # build the client, then serve the game on 127.0.0.1:8000
+make oauth-smoke # Chrome + external test IdP + official MCP client
+make embedded-smoke # Chrome + actual embedded AS + optional Inspector
+make proxy-smoke # installed game/gateway wheels through nginx HTTPS
+make build      # build client, then wheel/sdist including the required browser bundle
 ```
 
 ## Gotchas
@@ -448,9 +468,11 @@ make run        # build the client, then serve the game on 127.0.0.1:8000
 - Gateway settings use the `GATEWAY_` prefix; app settings use `APP_` (`config.py`).
 - Enable the admin dashboard with `GATEWAY_ADMIN_ENABLED=true GATEWAY_ADMIN_KEY=... make run`, then
   open `/admin?key=...`. Each browser session appears there as a connected provider.
-- A channel's `channel_id` and `mcp_token` are derived from the browser's stored token, so they are
+- A Token channel's `channel_id` and `mcp_token` are derived from the browser's stored token, so they are
   stable across reloads and server restarts (the channel is recreated on demand). A channel is only
   reclaimed after the grace with the browser gone.
+- Wheel/sdist force-include the built client, and missing dist fails packaging. Use `make build`.
+  Artifact verification and runtime checks: [tests/e2e/README.md](tests/e2e/README.md).
 - The client is built (Vite): edit `client/src`, run `make client` (or `make run`, which builds first).
   `src/app/web/dist` is generated and gitignored — never edit it by hand.
 - The client-supplied-token model means any well-formed UUID mints a channel, so an unauthenticated
@@ -464,12 +486,13 @@ make run        # build the client, then serve the game on 127.0.0.1:8000
 | --- | --- | --- |
 | `GET` | `/` | The single-page client: menu (connect box) that becomes the game on login. |
 | `GET` | `/app/info` | `{playersOnline, tools}` — for the login scene's online count and Tools window. |
-| `GET` (WS) | `/app/stream` | The session socket, opened with `?token=<uuid>` (the browser's stored token). Server → `session` (mcp url+token), then `login`, `catalog`, `map`, `snapshot`, `me`, `pong`. Client → `ping`, `me`. A missing/malformed token is refused. |
+| `GET` (WS) | `/app/stream` | The session socket, opened with `?token=<uuid>` in Token mode or a single-use `?ticket=<value>` in OAuth mode. Server → `session` (mcp url+token), then `login`, `catalog`, `map`, `snapshot`, `me`, `pong`. Client → `ping`, `me`. A missing/malformed token is refused. |
 | `GET` | `/static/...` | The self-hosted client, fonts and assets (served `no-cache`). |
 | `GET` | `/mcp/{sessionChannelId}`, `/provider`, `/health`, `/admin` | Inherited from the gateway. |
 
-The agent points its MCP client at the `mcpUrl` + `mcpToken` the browser shows in the connect box
-(delivered in the session socket's first `session` message).
+Token clients use the `mcpUrl` + `mcpToken` shown in the connection box. OAuth clients receive only
+the MCP URL and authenticate through discovery and host consent. BFF routes and cookie rules are
+documented in [docs/oauth.md](docs/oauth.md).
 
 ## Visual verification note
 
@@ -479,5 +502,3 @@ trees 192×256 or 192×192 per variant). It is
 HiDPI (`Scale.NONE` sized to `window × DPR`, `roundPixels`, world textures at nearest filtering), so it
 adapts to any resolution. The look is verified during development with headless-Chromium smoke runs
 (login → game render → combat → resize, asserting zero console errors), not by committed pixel tests.
-
-- **OAuth** — public MCP authorization and private provider credential boundaries: [docs/oauth.md](docs/oauth.md).

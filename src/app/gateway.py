@@ -21,6 +21,8 @@ from app.browser_oauth import BrowserOAuth
 from app.browser_session import BrowserSessionStore
 from app.catalog import build_catalog
 from app.config import AppSettings, get_app_settings
+from app.embedded_browser_identity import EmbeddedBrowserIdentity
+from app.game_consent_policy import GameConsentPolicy
 from app.gateway_settings import AppGatewaySettings
 from app.oauth_websocket import OAuthWebSocket
 from app.provider import LocalProvider
@@ -31,9 +33,14 @@ from mcpgtw.channel import Channel
 from mcpgtw.config import GatewaySettings
 from mcpgtw.errors import ChannelCapacityError, GatewayConfigurationError
 from mcpgtw.gateway import Gateway
+from mcpgtw.oauth.authorization_server import EmbeddedAuthorizationServer
 from mcpgtw.oauth.channel_access import DenyUnlessGranted
 from mcpgtw.oauth.channel_grants import ChannelGrantStore
+from mcpgtw.oauth.client_registry import OAuthClientRegistry
+from mcpgtw.oauth.identity import SqlitePasswordIdentity
+from mcpgtw.oauth.signing_key import OAuthSigningKey
 from mcpgtw.oauth.sqlite_grants import SqliteChannelGrantStore
+from mcpgtw.oauth.state_store import SqliteOAuthStateStore
 from mcpgtw.oauth.token_verifier import AccessTokenVerifier
 
 logger = logging.getLogger(__name__)
@@ -67,6 +74,7 @@ class AppGateway(Gateway):
     """
 
     mcp_server_name = "app"
+    browser_oauth_class: type[BrowserOAuth] = BrowserOAuth
 
     def __init__(
         self,
@@ -101,8 +109,51 @@ class AppGateway(Gateway):
             self.channel_grants = channel_grants or SqliteChannelGrantStore(
                 self.app_settings.oauth_database_path
             )
+            embedded = None
+
+            if settings.oauth_mode == "embedded":
+                store = SqliteOAuthStateStore(self.app_settings.oauth_database_path)
+                clients = OAuthClientRegistry(
+                    store,
+                    settings.oauth_embedded_issuer,
+                    settings.oauth_resource_url,
+                    settings.oauth_embedded_dcr_enabled,
+                )
+                clients.add(
+                    self.app_settings.oidc_client_id,
+                    {
+                        "client_name": "MCP Game browser",
+                        "redirect_uris": [
+                            self.app_settings.public_base_url + "/app/oauth/callback"
+                        ],
+                        "token_endpoint_auth_method": "client_secret_basic",
+                        "response_types": ["code"],
+                        "grant_types": ["authorization_code"],
+                    },
+                    self.app_settings.oidc_client_secret.get_secret_value(),
+                    browser=True,
+                )
+                embedded = EmbeddedAuthorizationServer(
+                    settings,
+                    SqlitePasswordIdentity(
+                        self.app_settings.oauth_database_path,
+                        self.app_settings.oauth_account_registration_enabled,
+                    ),
+                    GameConsentPolicy(self),
+                    store,
+                    OAuthSigningKey(self.app_settings.oauth_database_path + ".key"),
+                    clients,
+                )
+                browser_identity = browser_identity or EmbeddedBrowserIdentity(
+                    self.app_settings, embedded
+                )
+
+            elif not self.app_settings.oauth_mcp_client_ids:
+                raise GatewayConfigurationError("External OAuth requires approved MCP client IDs")
+
             super().__init__(
                 settings,
+                authorization_server=embedded,
                 access_token_verifier=access_token_verifier,
                 channel_access=DenyUnlessGranted(self.channel_grants),
                 static_channel_eligible=lambda channel: (
@@ -113,7 +164,7 @@ class AppGateway(Gateway):
                 self._owned_browser_identity = OidcBrowserIdentity(self.app_settings)
                 browser_identity = self._owned_browser_identity
 
-            self.browser_oauth = BrowserOAuth(
+            self.browser_oauth = self.browser_oauth_class(
                 self,
                 browser_identity,
                 browser_sessions or BrowserSessionStore(self.app_settings.oauth_database_path),
@@ -418,6 +469,11 @@ class AppGateway(Gateway):
 
         if self.channel_grants is not None:
             await self.channel_grants.remove_channel(channel.channel_id)
+
+        if isinstance(self.authorization_server, EmbeddedAuthorizationServer):
+            for owner, owned_channel in self._oauth_owners.items():
+                if owned_channel == channel.channel_id:
+                    await self.authorization_server.store.revoke_subject(owner[1])
 
         self._oauth_owners = {
             owner: cid for owner, cid in self._oauth_owners.items() if cid != channel.channel_id

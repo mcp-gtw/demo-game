@@ -38,8 +38,10 @@ with tempfile.TemporaryDirectory(prefix="oauth-local-") as temp:
     )
     env = os.environ | dict(
         TEST_SECRET=secrets.token_urlsafe(32),
-        TEST_ISSUER="http://127.0.0.1:19470",
+        TEST_ISSUER="https://localhost:19443",
         TEST_RESOURCE="https://localhost:19443/mcp",
+        TEST_CERTIFICATE=str(p / "cert.pem"),
+        TEST_STORAGE_DIR=str(p / "inspector"),
     )
     env.update(
         APP_MCP_AUTH_MODE="dual",
@@ -51,10 +53,12 @@ with tempfile.TemporaryDirectory(prefix="oauth-local-") as temp:
         APP_ALLOWED_BROWSER_ORIGINS="https://localhost:19443",
         APP_OAUTH_MCP_CLIENT_IDS="host",
         APP_OAUTH_ALLOW_LOCALHOST_HTTP="true",
-        GATEWAY_OAUTH_MODE="resource_server",
+        GATEWAY_OAUTH_MODE="embedded",
+        GATEWAY_OAUTH_EMBEDDED_DCR_ENABLED="true",
+        APP_OAUTH_ACCOUNT_REGISTRATION_ENABLED="true",
         GATEWAY_OAUTH_RESOURCE_URL=env["TEST_RESOURCE"],
         GATEWAY_OAUTH_AUTHORIZATION_SERVERS=env["TEST_ISSUER"],
-        GATEWAY_OAUTH_JWKS_URL=env["TEST_ISSUER"] + "/jwks",
+        GATEWAY_OAUTH_JWKS_URL=env["TEST_ISSUER"] + "/oauth/jwks",
         GATEWAY_OAUTH_ALLOW_LOCALHOST_HTTP="true",
         GATEWAY_OAUTH_ALLOW_STATIC_MCP_TOKENS="true",
         GATEWAY_ALLOWED_MCP_ORIGINS="",
@@ -64,7 +68,6 @@ with tempfile.TemporaryDirectory(prefix="oauth-local-") as temp:
     logs = contextlib.ExitStack()
     try:
         for args, name in [
-            (["idp:app", "--app-dir", str(fixture), "--port", "19470"], "idp"),
             (
                 [
                     "app.main:app",
@@ -99,7 +102,7 @@ with tempfile.TemporaryDirectory(prefix="oauth-local-") as temp:
         time.sleep(3)
         assert all(c.poll() is None for c in children)
         subprocess.run(
-            ["node", str(root / "client/tests/oauth-browser-smoke.mjs")],
+            ["node", str(root / "client/tests/embedded-browser-smoke.mjs")],
             cwd=root,
             env=env
             | dict(

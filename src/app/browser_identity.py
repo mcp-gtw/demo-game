@@ -94,7 +94,7 @@ class OidcBrowserIdentity(BrowserIdentity):
             header.get("alg") not in ("RS256", "ES256")
             or "jku" in header
             or "x5u" in header
-            or header.get("crit")
+            or "crit" in header
         ):
             raise ValueError("Invalid identity token algorithm")
 

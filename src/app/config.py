@@ -28,8 +28,13 @@ class AppSettings(BaseSettings):
     oauth_mcp_client_ids: Annotated[list[str], NoDecode] = Field(default_factory=list)
     oauth_database_path: str = ""
     oauth_allow_localhost_http: bool = False
+    oauth_account_registration_enabled: bool = False
     websocket_ticket_ttl_seconds: float = Field(default=30, gt=0, le=60)
     session_idle_seconds: float = Field(default=900, gt=0, allow_inf_nan=False)
+
+    oauth_browser_rate_limit_requests: int = Field(default=30, ge=1)
+    oauth_browser_rate_limit_window_seconds: float = Field(default=60, gt=0, allow_inf_nan=False)
+    oauth_browser_rate_limit_maximum_keys: int = Field(default=10000, ge=1)
 
     @field_validator("allowed_browser_origins", "oauth_mcp_client_ids", mode="before")
     @classmethod
@@ -53,7 +58,6 @@ class AppSettings(BaseSettings):
             or not self.oidc_client_secret.get_secret_value()
             or not self.oauth_database_path
             or self.oauth_database_path == ":memory:"
-            or not self.oauth_mcp_client_ids
             or not self.allowed_browser_origins
             or self.public_base_url.endswith("/")
         ):
@@ -61,7 +65,7 @@ class AppSettings(BaseSettings):
                 "OAuth requires identity, durable sessions, origins and approved MCP clients"
             )
 
-        if not self.session_cookie_name.isidentifier():
+        if not self.session_cookie_name.isascii() or not self.session_cookie_name.isidentifier():
             raise ValueError("Invalid session cookie name")
 
         return self
