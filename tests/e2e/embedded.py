@@ -47,6 +47,7 @@ with tempfile.TemporaryDirectory(prefix="oauth-local-") as temp:
     )
     env.update(
         APP_MCP_AUTH_MODE="dual",
+        APP_SESSION_GRACE_SECONDS="1",
         APP_PUBLIC_BASE_URL="https://localhost:19443",
         APP_OIDC_ISSUER=env["TEST_ISSUER"],
         APP_OIDC_CLIENT_ID="browser",

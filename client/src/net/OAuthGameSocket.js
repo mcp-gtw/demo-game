@@ -6,6 +6,10 @@ export class OAuthGameSocket extends GameSocket {
             const response = await fetchTicket();
 
             if (!response.ok) {
+                if (response.status === 401 || response.status === 403) {
+                    handlers.onAuthRequired?.();
+                }
+
                 throw new Error("OAuth browser session unavailable");
             }
 

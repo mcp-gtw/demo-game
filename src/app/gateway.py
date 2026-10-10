@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -70,7 +71,7 @@ class AppGateway(Gateway):
 
     Each browser opens one session websocket that gives it a private MCP channel. The agent connects
     to that channel and calls login, the session adopts the player, and the same websocket then
-    streams the world. Closing the browser tears the session and its player down.
+    streams the world. Browser connections and successful MCP calls retain the session.
     """
 
     mcp_server_name = "app"
@@ -498,25 +499,38 @@ class AppGateway(Gateway):
         session.connections -= 1
 
         if session.connections <= 0:
-            self.schedule_idle_teardown(session, self.app_settings.session_grace_seconds)
+            delay = max(self.app_settings.session_grace_seconds, self._mcp_idle_remaining(session))
+            self.schedule_idle_teardown(session, delay)
+
+    def _mcp_idle_remaining(self, session: Session) -> float:
+        if session.last_mcp_activity is None:
+            return 0
+
+        return session.last_mcp_activity + self.app_settings.session_idle_seconds - time.monotonic()
 
     async def _teardown_when_idle(self, session: Session, delay_seconds: float) -> None:
-        try:
-            await asyncio.sleep(delay_seconds)
-        except asyncio.CancelledError:
-            return
-
-        # take the lock so a concurrent reconnect never reuses a session being reclaimed
-        async with self._session_lock:
-            if self._sessions.get(session.channel_id) is not session or session.connections > 0:
+        while True:
+            try:
+                await asyncio.sleep(delay_seconds)
+            except asyncio.CancelledError:
                 return
 
-            self._sessions.pop(session.channel_id, None)
+            async with self._session_lock:
+                if self._sessions.get(session.channel_id) is not session or session.connections > 0:
+                    return
 
-            if session.player_id is not None:
-                session.room.world.remove_player(session.player_id)
+                delay_seconds = self._mcp_idle_remaining(session)
 
-            await self.registry.remove_channel(session.channel_id)
+                if delay_seconds > 0:
+                    continue
+
+                self._sessions.pop(session.channel_id)
+
+                if session.player_id is not None:
+                    session.room.world.remove_player(session.player_id)
+
+                await self.registry.remove_channel(session.channel_id)
+                return
 
     @staticmethod
     async def _cancel(task: asyncio.Task[Any]) -> None:

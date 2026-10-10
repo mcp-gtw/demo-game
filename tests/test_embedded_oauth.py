@@ -398,6 +398,7 @@ async def test_host_only_expiry_revokes_grants_tokens_and_player(embedded):
     owned = next(iter(gateway._sessions.values()))
     channel = gateway.registry.get(owned.channel_id)
     await channel.execute_tool(name="login", arguments={"name": "Transient"})
+    owned.last_mcp_activity = time.monotonic() - gateway.app_settings.session_idle_seconds
     gateway.schedule_idle_teardown(owned, 0)
     await owned.teardown
     assert not gateway._sessions

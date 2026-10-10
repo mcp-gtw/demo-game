@@ -129,4 +129,6 @@ Token is the default. Dual mode offers Token and OAuth in the same game. OAuth c
 
 Embedded OAuth on the game domain uses the published gateway 0.0.12 from PyPI. Sign-in and consent use responsive monochrome dark pages with compact hints and expandable connection details. Docker builds require only this repository. See [authentication and deployment](docs/oauth.md) and `.env.oauth.example`.
 
+Reloading or reopening restores the selected connection and its existing character while the session is active. Multiple tabs share the same identity, and successful MCP tool calls retain the character after the last browser tab closes. See [session resumption](docs/oauth.md#session-resumption-acceptance).
+
 Browser login permits ten minutes by default through `APP_OAUTH_LOGIN_TIMEOUT_SECONDS`. Keep the authorization server login window aligned. Enable embedded account creation explicitly with `APP_OAUTH_ACCOUNT_REGISTRATION_ENABLED=true`. See [login deadlines](docs/oauth.md#browser-flow-and-revocation).

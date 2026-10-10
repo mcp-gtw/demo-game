@@ -54,6 +54,7 @@ class BrowserOAuth:
         app.add_api_route("/app/oauth/login", self.login, methods=["GET"])
         app.add_api_route("/app/oauth/callback", self.callback, methods=["GET"])
         app.add_api_route("/app/oauth/consent", self.consent, methods=["POST"])
+        app.add_api_route("/app/oauth/session", self.session, methods=["POST"])
         app.add_api_route("/app/oauth/ticket", self.ticket, methods=["POST"])
         app.add_api_route("/app/oauth/logout", self.logout, methods=["POST"])
 
@@ -135,25 +136,30 @@ class BrowserOAuth:
         self.principal_limit.enforce(self._principal(issuer, subject))
 
         try:
-            old = await self.store.consume(
-                "session", browser_cookie(request, self.settings.session_cookie_name)
-            )
-
-            if old is not None and (old["issuer"], old["subject"]) != (issuer, subject):
-                await self._revoke(old["channel"])
-
+            old_cookie = browser_cookie(request, self.settings.session_cookie_name)
+            old = await self.store.get("session", old_cookie)
             session = await self.gateway.acquire_oauth_session(issuer, subject)
-            cookie = await self.store.put(
-                "session",
-                {
-                    "issuer": issuer,
-                    "subject": subject,
-                    "channel": session.channel_id,
-                    "consented": False,
-                    "expires_at": int(time.time() + self.settings.session_idle_seconds),
-                },
-                self.settings.session_idle_seconds,
-            )
+
+            if old is not None and old["channel"] == session.channel_id:
+                cookie = old_cookie
+                ttl = max(1, old["expires_at"] - int(time.time()))
+            else:
+                if old is not None:
+                    await self.store.consume("session", old_cookie)
+                    await self._revoke(old["channel"])
+
+                ttl = int(self.settings.session_idle_seconds)
+                cookie = await self.store.put(
+                    "session",
+                    {
+                        "issuer": issuer,
+                        "subject": subject,
+                        "channel": session.channel_id,
+                        "consented": False,
+                        "expires_at": int(time.time() + self.settings.session_idle_seconds),
+                    },
+                    self.settings.session_idle_seconds,
+                )
         except Exception:
             return self._denied()
 
@@ -162,7 +168,7 @@ class BrowserOAuth:
             response,
             self.settings.session_cookie_name,
             cookie,
-            int(self.settings.session_idle_seconds),
+            ttl,
         )
         response.delete_cookie(
             "game_oauth_state", path="/app", secure=True, httponly=True, samesite="lax"
@@ -188,6 +194,14 @@ class BrowserOAuth:
     def _principal(issuer: str, subject: str) -> str:
         return hashlib.sha256((issuer + "\0" + subject).encode()).hexdigest()
 
+    async def session(self, request: Request) -> Response:
+        browser = await self._browser(request)
+
+        if browser is None or not browser["consented"]:
+            return self._denied()
+
+        return JSONResponse({"authorized": True}, headers={"Cache-Control": "no-store"})
+
     async def consent(self, request: Request) -> Response:
         browser = await self._browser(request)
 
@@ -204,7 +218,8 @@ class BrowserOAuth:
             )
             await self.gateway.channel_grants.grant(principal, browser["channel"])
 
-        self.gateway._sessions[browser["channel"]].oauth_authorized_until = browser["expires_at"]
+        session = self.gateway._sessions[browser["channel"]]
+        session.oauth_authorized_until = max(session.oauth_authorized_until, browser["expires_at"])
         browser["consented"] = True
         await self.store.update(
             "session", browser_cookie(request, self.settings.session_cookie_name), browser

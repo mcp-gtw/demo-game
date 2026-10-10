@@ -19,7 +19,12 @@ const watchAnalytics = context => context.route('https://www.googletagmanager.co
     await route.fulfill({contentType:'application/javascript',body:''});
 });
 await watchAnalytics(context);
+const playerLogins = new WeakMap();
+const closedStreams = new WeakMap();
 const capture = page => {
+    playerLogins.set(page, []);
+    closedStreams.set(page, 0);
+    page.on("websocket", ws => ws.on("close", () => closedStreams.set(page, closedStreams.get(page) + 1)));
     const sessions = [];
     page.on('pageerror', error => failures.push(error.message));
     page.on('console', message => {
@@ -46,6 +51,7 @@ const capture = page => {
     page.on('websocket', ws => ws.on('framereceived', ({payload}) => {
         const frame = JSON.parse(payload.toString());
         if(frame.type === 'session') sessions.push(frame);
+        if(frame.type === 'login') playerLogins.get(page).push(frame.player.id);
     }));
     return sessions;
 };
@@ -58,7 +64,7 @@ const waitFor = async predicate => {
 };
 let menuCaptures = 0;
 const gameReady = async page => {
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.locator('#game[aria-busy=false] canvas').waitFor({state:'visible'});
     await page.evaluate(async () => {
         await document.fonts.ready;
@@ -131,17 +137,70 @@ try {
     await gameReady(hostFirstPage);
     await hostFirstPage.mouse.click(512,440);
     await hostFirstPage.getByRole('button',{name:'Allow',exact:true}).click();
-    await hostFirstPage.waitForURL(base+'/?auth=oauth');
+    await hostFirstPage.waitForURL(url => url.origin === base && url.pathname === '/');
     await gameReady(hostFirstPage);
-    await hostFirstPage.mouse.click(512,440);
     await waitFor(() => joinedPlayers.length);
     assert.equal(joinedPlayers[0],hostFirstResult.player.id);
     assert.equal(hostFirstSessions[0].authMethod,'oauth');
     assert.ok(!('mcpToken' in hostFirstSessions[0]));
     assert.equal(host({url:base+'/mcp',token:hostCredentials.access_token,name:null}).player.id,joinedPlayers[0]);
     await hostFirstPage.screenshot({path:'/tmp/oauth-host-first-game.png'});
+    await hostFirstPage.reload();
+    await gameReady(hostFirstPage);
+    await waitFor(() => joinedPlayers.length === 2);
+    assert.equal(joinedPlayers.at(-1), hostFirstResult.player.id);
+    const sibling = await hostContext.newPage();
+    capture(sibling);
+    await sibling.goto(base);
+    await gameReady(sibling);
+    await waitFor(() => playerLogins.get(sibling).length);
+    assert.equal(playerLogins.get(sibling).at(-1), hostFirstResult.player.id);
+    await hostFirstPage.close();
+    assert.equal(host({url:base+'/mcp',token:hostCredentials.access_token,name:null,move:true}).move,true);
+    await sibling.close();
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    assert.equal(host({url:base+'/mcp',token:hostCredentials.access_token,name:null}).player.id,hostFirstResult.player.id);
+    const reopened = await hostContext.newPage();
+    capture(reopened);
+    await reopened.goto(base);
+    await gameReady(reopened);
+    await waitFor(() => playerLogins.get(reopened).length);
+    assert.equal(playerLogins.get(reopened).at(-1),hostFirstResult.player.id);
+    await reopened.screenshot({path:'/tmp/oauth-reopened-same-player.png'});
+    const observer = await hostContext.newPage();
+    capture(observer);
+    await observer.goto(base);
+    await gameReady(observer);
+    await waitFor(() => playerLogins.get(observer).length);
+    const observerClosed = closedStreams.get(observer);
+    const cookieBefore = (await hostContext.cookies()).find(cookie => cookie.name === 'game_session').value;
+    await reopened.goto(base+'/app/oauth/login');
+    await reopened.getByRole('button',{name:'Allow',exact:true}).click();
+    await reopened.waitForURL(url => url.origin === base && url.pathname === '/');
+    await gameReady(reopened);
+    await waitFor(() => playerLogins.get(reopened).length === 2);
+    assert.equal(playerLogins.get(reopened).at(-1),hostFirstResult.player.id);
+    assert.equal((await hostContext.cookies()).find(cookie => cookie.name === 'game_session').value,cookieBefore);
+    assert.equal(closedStreams.get(observer),observerClosed);
+    const freshContext = await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1024,height:768}});
+    await watchAnalytics(freshContext);
+    const freshPage = await freshContext.newPage();
+    capture(freshPage);
+    await freshPage.goto(base);
+    await gameReady(freshPage);
+    await freshPage.mouse.click(512,440);
+    await freshPage.locator('input[name=username]').fill('host-first');
+    await freshPage.locator('input[name=password]').fill('strong-local-password');
+    await freshPage.getByRole('button',{name:'Sign in',exact:true}).click();
+    await freshPage.getByRole('button',{name:'Allow',exact:true}).click();
+    await freshPage.waitForURL(url => url.origin === base && url.pathname === '/');
+    await gameReady(freshPage);
+    await waitFor(() => playerLogins.get(freshPage).length);
+    assert.equal(playerLogins.get(freshPage).at(-1),hostFirstResult.player.id);
+    await freshPage.screenshot({path:'/tmp/oauth-new-browser-same-account.png'});
+    await freshContext.close();
     await hostContext.close();
-    const page = await context.newPage();
+    let page = await context.newPage();
     const tokenSessions = capture(page);
     await page.goto(base);
     await gameReady(page);
@@ -162,10 +221,37 @@ try {
     await page.waitForTimeout(500);
     await page.screenshot({path:'/tmp/oauth-token-options.png'});
     const tokenResult = host({url:token.mcpUrl,token:token.mcpToken,name:'TokenSmoke'});
-    const oauthPage = await context.newPage();
+    await page.reload();
+    await gameReady(page);
+    await waitFor(() => playerLogins.get(page).length === 2);
+    assert.equal(playerLogins.get(page).at(-1),tokenResult.player.id);
+    const tokenSibling = await context.newPage();
+    const siblingSessions = capture(tokenSibling);
+    await tokenSibling.goto(base);
+    await gameReady(tokenSibling);
+    await waitFor(() => playerLogins.get(tokenSibling).length);
+    assert.equal(siblingSessions[0].mcpToken,token.mcpToken);
+    assert.equal(playerLogins.get(tokenSibling).at(-1),tokenResult.player.id);
+    await tokenSibling.close();
+    await page.close();
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    page = await context.newPage();
+    const reopenedTokenSessions = capture(page);
+    await page.goto(base);
+    await gameReady(page);
+    await waitFor(() => playerLogins.get(page).length);
+    assert.equal(reopenedTokenSessions[0].mcpToken,token.mcpToken);
+    assert.equal(playerLogins.get(page).at(-1),tokenResult.player.id);
+    assert.equal(host({url:token.mcpUrl,token:token.mcpToken,name:null,move:true}).move,true);
+    await page.screenshot({path:'/tmp/token-reopened-same-player.png'});
+    const oauthContext = context;
+    const oauthPage = await oauthContext.newPage();
     const oauthSessions = capture(oauthPage);
     await oauthPage.goto(base);
     await gameReady(oauthPage);
+    await waitFor(() => playerLogins.get(oauthPage).length);
+    await oauthPage.mouse.click(889,727);
+    await oauthPage.waitForTimeout(300);
     await oauthPage.mouse.click(512,440);
     await oauthPage.getByRole('heading',{name:'Sign in',exact:true}).waitFor();
     await oauthPage.screenshot({path:'/tmp/oauth-after-select.png'});
@@ -186,10 +272,9 @@ try {
     await checkAuthorizationLayout(oauthPage, 'consent');
     assert.equal(await oauthPage.locator('details').evaluate(element => element.open), false);
     await oauthPage.getByRole('button',{name:'Allow',exact:true}).click();
-    await oauthPage.waitForURL(base+'/?auth=oauth');
+    await oauthPage.waitForURL(url => url.origin === base && url.pathname === '/');
     await gameReady(oauthPage);
     await oauthPage.screenshot({path:'/tmp/oauth-game-menu-before-connect.png'});
-    await oauthPage.mouse.click(512,440);
     await oauthPage.screenshot({path:'/tmp/oauth-game-menu-after-connect.png'});
     const canvasLayout = await oauthPage.evaluate(() => ({
         width:innerWidth,height:innerHeight,dpr:devicePixelRatio,visibility:document.visibilityState,
@@ -197,7 +282,7 @@ try {
     }));
     console.log(JSON.stringify({canvasLayout}));
     await waitFor(()=>oauthSessions.length);
-    const oauth = oauthSessions[0];
+    const oauth = oauthSessions.at(-1);
     assert.equal(oauth.authMethod,'oauth');
     assert.ok(oauth.mcpUrl.startsWith(base+'/mcp/'));
     assert.ok(!('mcpToken' in oauth));
@@ -207,9 +292,9 @@ try {
     const verifier = randomBytes(48).toString('base64url');
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     const state = randomBytes(24).toString('base64url');
-    const hostPage = await context.newPage();
+    const hostPage = await oauthContext.newPage();
     capture(hostPage);
-    const registeredResponse = await context.request.post(issuer+'/oauth/register',{data:{redirect_uris:[redirect],client_name:'Local MCP host'}});
+    const registeredResponse = await oauthContext.request.post(issuer+'/oauth/register',{data:{redirect_uris:[redirect],client_name:'Local MCP host'}});
     assert.equal(registeredResponse.status(),201);
     const registered = await registeredResponse.json();
     const authorize = new URL(issuer+'/oauth/authorize');
@@ -222,7 +307,7 @@ try {
     assert.equal(callback.searchParams.get('state'),state);
     assert.equal(callback.searchParams.get('iss'),issuer);
     const fields = {grant_type:'authorization_code',client_id:registered.client_id,redirect_uri:redirect,code:callback.searchParams.get('code'),code_verifier:verifier,resource:base+'/mcp'};
-    const response = await context.request.post(issuer+'/oauth/token',{form:fields});
+    const response = await oauthContext.request.post(issuer+'/oauth/token',{form:fields});
     assert.equal(response.status(),200);
     const credentials = await response.json();
     assert.equal(credentials.scope, 'mcp:access openid');
@@ -232,7 +317,7 @@ try {
         assert.equal(inspected.status, 0, inspected.stderr);
         assert.equal(JSON.parse(inspected.stdout).result.tools.length, 10);
     }
-    const replay = await context.request.post(issuer+'/oauth/token',{form:fields});
+    const replay = await oauthContext.request.post(issuer+'/oauth/token',{form:fields});
     assert.equal(replay.status(),400);
     const oauthResult = host({url:oauth.mcpUrl,token:credentials.access_token,name:'OAuthSmoke'});
     await hostPage.goto(authorize.href);
@@ -244,17 +329,22 @@ try {
     assert.equal(deniedCallback.searchParams.has('code'),false);
     assert.equal(deniedCallback.searchParams.get('state'),state);
     assert.equal(deniedCallback.searchParams.get('iss'),issuer);
-    const visits = await (await context.request.get(callbackOrigin+'/stats')).json();
+    const visits = await (await oauthContext.request.get(callbackOrigin+'/stats')).json();
     assert.equal(visits.selected,3);
     assert.equal(visits.unrelated,0);
 
-    const refreshResponse = await context.request.post(issuer+'/oauth/token',{form:{client_id:registered.client_id,grant_type:'refresh_token',refresh_token:credentials.refresh_token,resource:base+'/mcp'}});
+    const refreshResponse = await oauthContext.request.post(issuer+'/oauth/token',{form:{client_id:registered.client_id,grant_type:'refresh_token',refresh_token:credentials.refresh_token,resource:base+'/mcp'}});
     assert.equal(refreshResponse.status(),200);
     const renewed = await refreshResponse.json();
     assert.notEqual(renewed.refresh_token,credentials.refresh_token);
     assert.equal(host({url:oauth.mcpUrl,token:renewed.access_token,name:null}).player.id,oauthResult.player.id);
     assert.equal(tokenResult.move, true);
     assert.equal(oauthResult.move, true);
+    await page.reload();
+    await gameReady(page);
+    await waitFor(() => playerLogins.get(page).length === 2);
+    assert.equal(playerLogins.get(page).at(-1),tokenResult.player.id);
+    assert.equal(host({url:oauth.mcpUrl,token:renewed.access_token,name:null}).player.id,oauthResult.player.id);
     assert.notDeepEqual(tokenResult.player,oauthResult.player);
     await oauthPage.waitForTimeout(1500);
     await oauthPage.screenshot({path:'/tmp/oauth-game.png'});
@@ -262,7 +352,7 @@ try {
     const logoutResponse = oauthPage.waitForResponse(response => new URL(response.url()).pathname === '/app/oauth/logout');
     await oauthPage.mouse.click(889,727);
     assert.equal((await logoutResponse).status(),200);
-    const denied = await context.request.post(base+'/mcp',{headers:{Authorization:'Bearer '+credentials.access_token},data:{jsonrpc:'2.0',id:1,method:'tools/list'}});
+    const denied = await oauthContext.request.post(base+'/mcp',{headers:{Authorization:'Bearer '+credentials.access_token},data:{jsonrpc:'2.0',id:1,method:'tools/list'}});
     assert.equal(denied.status(),401);
     const beforeSwitch = oauthSessions.length;
     await gameReady(oauthPage);
@@ -274,12 +364,15 @@ try {
     const stillToken = host({url:token.mcpUrl,token:token.mcpToken,name:null});
     assert.ok(JSON.stringify(stillToken.player).includes('TokenSmoke'));
     assert.equal(failures.length,0,failures.join('\n'));
-    assert.equal(unauthenticatedConsent.length,2);
-    assert.equal(unauthenticatedResponses.length,2);
+    assert.equal(unauthenticatedConsent.length,3);
+    assert.equal(unauthenticatedResponses.length,3);
     assert.equal(analyticsRequests.length,0);
     assert.equal(await page.evaluate(() => 'dataLayer' in window),false);
     assert.equal(await oauthPage.evaluate(() => 'dataLayer' in window),false);
-    console.log(JSON.stringify({oauthAnalyticsDisabled:true,expectedUnauthenticatedConsent:unauthenticatedConsent.length,crossOriginAllow:true,crossOriginDeny:true,hostFirst:true,publicUrlCopiedBeforeLogin:true,browserReusedPlayer:true,darkTheme:true,responsiveViewports:4,embedded:true,openid:true,inspector:!!process.env.TEST_INSPECTOR_VERSION,registration:true,refresh:true,dual:true,token:tokenResult.login,oauth:oauthResult.login,tools:oauthResult.tools,tokenMoved:tokenResult.move,oauthMoved:oauthResult.move,codeReplayRejected:true,logoutRevoked:true,switchToToken:true,tokenUnaffected:true,browserErrors:failures.length}));
+    console.log(JSON.stringify({reloadSamePlayer:true,twoTabsSamePlayer:true,reopenAfterGrace:true,reauthenticationKeepsOtherTab:true,freshBrowserSameAccount:true,tokenReloadSamePlayer:true,tokenTabsSamePlayer:true,tokenReopenedAfterGrace:true,mixedTabsReloadIndependent:true,oauthAnalyticsDisabled:true,expectedUnauthenticatedConsent:unauthenticatedConsent.length,crossOriginAllow:true,crossOriginDeny:true,hostFirst:true,publicUrlCopiedBeforeLogin:true,browserReusedPlayer:true,darkTheme:true,responsiveViewports:4,embedded:true,openid:true,inspector:!!process.env.TEST_INSPECTOR_VERSION,registration:true,refresh:true,dual:true,token:tokenResult.login,oauth:oauthResult.login,tools:oauthResult.tools,tokenMoved:tokenResult.move,oauthMoved:oauthResult.move,codeReplayRejected:true,logoutRevoked:true,switchToToken:true,tokenUnaffected:true,browserErrors:failures.length}));
+} catch (error) {
+    console.error(JSON.stringify({failures,browserRequests}));
+    throw error;
 } finally {
     await browser.close();
 }

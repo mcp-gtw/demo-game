@@ -276,3 +276,23 @@ it("stale open and message events cannot restore an abandoned method", () => {
     expect(h.onSession).not.toHaveBeenCalled();
     expect(h.onStatus).not.toHaveBeenCalledWith("online", null);
 });
+
+
+it.each([401, 403])("OAuth HTTP %s requests reauthentication and stops reconnecting", async status => {
+    let socket;
+    const onAuthRequired = vi.fn(() => socket.disconnect());
+    socket = new OAuthGameSocket("wss://host/app/stream", { onAuthRequired }, async () => ({ ok: false, status }));
+    socket.connect();
+    await settle();
+    expect(onAuthRequired).toHaveBeenCalledOnce();
+    expect(socket.reconnectTimer).toBeNull();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+});
+
+it("unauthorized OAuth never requires a callback to keep credentials private", async () => {
+    const socket = new OAuthGameSocket("wss://host/app/stream", {}, async () => ({ ok: false, status: 403 }));
+    socket.connect();
+    await settle();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    socket.disconnect();
+});

@@ -801,3 +801,52 @@ async def test_browser_login_wait_and_expired_state_replay(gateway, monkeypatch,
 def test_browser_login_timeout_rejects_invalid_values(timeout):
     with pytest.raises(ValidationError):
         AppSettings(oauth_login_timeout_seconds=timeout)
+
+
+async def test_browser_resume_checks_consent_origin_expiry_and_never_renews_grants(gateway):
+    async with client_for(gateway) as client:
+        assert (await client.post("/app/oauth/session")).status_code == 403
+        await login(client)
+        assert (await client.post("/app/oauth/session")).status_code == 403
+        await client.post("/app/oauth/consent")
+        cookie = client.cookies["game_session"]
+        browser = await gateway.browser_oauth.store.get("session", cookie)
+        assert (await client.post("/app/oauth/session")).json() == {"authorized": True}
+        assert await gateway.browser_oauth.store.get("session", cookie) == browser
+        assert (
+            await client.post("/app/oauth/session", headers={"Origin": "https://evil.example"})
+        ).status_code == 403
+        await gateway.channel_grants.revoke(verified("alice"), browser["channel"])
+        await client.post("/app/oauth/session")
+        assert not await gateway.channel_grants.channels(verified("alice"))
+        await gateway.browser_oauth.store.consume("session", cookie)
+        assert (await client.post("/app/oauth/session")).status_code == 403
+
+
+async def test_same_account_reauthentication_preserves_cookie_player_and_other_tabs(gateway):
+    async with client_for(gateway) as client:
+        await login(client)
+        await client.post("/app/oauth/consent")
+        cookie = client.cookies["game_session"]
+        browser = await gateway.browser_oauth.store.get("session", cookie)
+        session = gateway._sessions[browser["channel"]]
+        channel = gateway.registry.get(session.channel_id)
+        await channel.execute_tool(name="login", arguments={"name": "shared"})
+        player_id = session.player_id
+        first_ticket = (await client.post("/app/oauth/ticket")).json()["ticket"]
+        first = ws_for(cookie, first_ticket)
+        assert await gateway.browser_oauth.consume_ticket(first, first_ticket) is session
+        await login(client)
+        assert client.cookies["game_session"] == cookie
+        assert await gateway.browser_oauth.store.get("session", cookie) == browser
+        second_ticket = (await client.post("/app/oauth/ticket")).json()["ticket"]
+        second = ws_for(cookie, second_ticket)
+        assert await gateway.browser_oauth.consume_ticket(second, second_ticket) is session
+        assert gateway.browser_oauth._sockets[session.channel_id] == {first, second}
+        assert session.player_id == player_id
+        session.oauth_authorized_until = browser["expires_at"] + 60
+        await client.post("/app/oauth/consent")
+        assert session.oauth_authorized_until == browser["expires_at"] + 60
+        await client.post("/app/oauth/logout")
+        assert (await client.post("/app/oauth/session")).status_code == 403
+        assert gateway.registry.get(session.channel_id) is None
