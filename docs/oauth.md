@@ -165,7 +165,8 @@ OAuth credentials and cookies are never copied into either storage area.
 `POST /app/oauth/session` is a read-only BFF check before automatic restoration. It requires the
 allowed Origin, an unexpired cookie, explicit existing browser consent and a live owned channel.
 It returns only `{ "authorized": true }` with `Cache-Control: no-store`, never tokens or account
-identifiers. It does not write grants, extend a cookie deadline or recreate a channel. Ticket
+identifiers. It does not write grants, extend a cookie deadline or recreate a channel. Re-selecting OAuth with
+an already consented cookie is idempotent and cannot restore revoked MCP client grants. Ticket
 HTTP 401/403 ends reconnection and returns to the authentication menu. Temporary server errors, network failures
 and rate limits leave the method menu available for retry without redirecting into another login flow.
 

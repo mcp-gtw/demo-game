@@ -818,6 +818,7 @@ async def test_browser_resume_checks_consent_origin_expiry_and_never_renews_gran
         ).status_code == 403
         await gateway.channel_grants.revoke(verified("alice"), browser["channel"])
         await client.post("/app/oauth/session")
+        assert (await client.post("/app/oauth/consent")).status_code == 200
         assert not await gateway.channel_grants.channels(verified("alice"))
         await gateway.browser_oauth.store.consume("session", cookie)
         assert (await client.post("/app/oauth/session")).status_code == 403

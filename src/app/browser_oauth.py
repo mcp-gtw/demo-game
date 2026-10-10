@@ -208,6 +208,9 @@ class BrowserOAuth:
         if browser is None:
             return self._denied()
 
+        if browser["consented"]:
+            return JSONResponse({"authorized": True}, headers={"Cache-Control": "no-store"})
+
         for client_id in self.settings.oauth_mcp_client_ids:
             principal = VerifiedPrincipal(
                 browser["issuer"],
