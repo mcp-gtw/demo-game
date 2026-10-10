@@ -11,7 +11,7 @@ authoritative grid world, its HTTP/WebSocket surface and a self-hosted Phaser cl
 
 The internal package name is intentionally generic (`app`) so the demo is easy to port or reuse.
 
-It requires `mcp-gtw>=0.0.9`, resolved from PyPI by the lockfile. Development, CI and Docker builds work without a sibling gateway checkout. See [docs/oauth.md](docs/oauth.md) for deployment.
+It requires `mcp-gtw>=0.0.10`, resolved from PyPI by the lockfile. Development, CI and Docker builds work without a sibling gateway checkout. See [docs/oauth.md](docs/oauth.md) for deployment.
 
 ## Documentation map
 

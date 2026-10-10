@@ -48,7 +48,7 @@ async def client_check():
             assert len((await mcp.list_tools()).tools) == 10
 
 
-async def oauth_check():
+async def oauth_check(host_first=False):
     base = "https://localhost:19490"
     issuer = "https://mcpgame.paulox.dev"
     resource = issuer + "/mcp"
@@ -61,28 +61,27 @@ async def oauth_check():
     async with httpx.AsyncClient(
         base_url=base, verify=False, trust_env=False, headers={"Origin": issuer}
     ) as client:
-        response = await client.get("/app/oauth/login")
-        response = await client.get(redirect(response))
-        assert redirect(response) == "/oauth/login"
-        await client.get("/oauth/login")
-        response = await client.post(
-            "/oauth/login",
-            data={
-                "username": "proxy-" + secrets.token_hex(4),
-                "password": secrets.token_urlsafe(24),
-                "action": "register",
-                "csrf": client.cookies["oauth_csrf"],
-            },
-        )
-        assert response.status_code == 303
-        await client.get(redirect(response))
-        response = await client.post(
-            "/oauth/consent", data={"action": "allow", "csrf": client.cookies["oauth_csrf"]}
-        )
-        assert (await client.get(redirect(response))).status_code == 307
-        assert (await client.post("/app/oauth/consent")).status_code == 200
-        ticket = (await client.post("/app/oauth/ticket")).json()["ticket"]
-        cookies = {cookie.name: cookie.value for cookie in client.cookies.jar}
+        if not host_first:
+            response = await client.get("/app/oauth/login")
+            response = await client.get(redirect(response))
+            assert redirect(response) == "/oauth/login"
+            await client.get("/oauth/login")
+            response = await client.post(
+                "/oauth/login",
+                data={
+                    "username": "proxy-" + secrets.token_hex(4),
+                    "password": secrets.token_urlsafe(24),
+                    "action": "register",
+                    "csrf": client.cookies["oauth_csrf"],
+                },
+            )
+            assert response.status_code == 303
+            await client.get(redirect(response))
+            response = await client.post(
+                "/oauth/consent", data={"action": "allow", "csrf": client.cookies["oauth_csrf"]}
+            )
+            assert (await client.get(redirect(response))).status_code == 307
+            assert (await client.post("/app/oauth/consent")).status_code == 200
         registered = (
             await client.post(
                 "/oauth/register", json={"redirect_uris": ["https://client.example/callback"]}
@@ -107,6 +106,21 @@ async def oauth_check():
                 "code_challenge_method": "S256",
             },
         )
+        if host_first:
+            assert redirect(response) == "/oauth/login"
+            await client.get("/oauth/login")
+            response = await client.post(
+                "/oauth/login",
+                data={
+                    "username": "host-first-" + secrets.token_hex(4),
+                    "password": secrets.token_urlsafe(24),
+                    "action": "register",
+                    "csrf": client.cookies["oauth_csrf"],
+                },
+            )
+            assert response.status_code == 303
+            assert "game_session" not in client.cookies
+
         await client.get(redirect(response))
         response = await client.post(
             "/oauth/consent", data={"action": "allow", "csrf": client.cookies["oauth_csrf"]}
@@ -125,6 +139,33 @@ async def oauth_check():
         assert response.status_code == 200
         access = response.json()["access_token"]
         assert (await client.post("/oauth/token", data=token_request)).status_code == 400
+
+        if host_first:
+            async with (
+                httpx2.AsyncClient(
+                    verify=False, headers={"Authorization": "Bearer " + access}
+                ) as transport,
+                streamable_http_client(base + "/mcp", http_client=transport) as (read, write),
+                ClientSession(read, write) as mcp,
+            ):
+                await mcp.initialize()
+                assert len((await mcp.list_tools()).tools) == 10
+                assert not (await mcp.call_tool("login", {"name": "ProxyHostFirst"})).is_error
+                player = (await mcp.call_tool("get_player", {})).structured_content
+                assert await move_player(mcp)
+
+            response = await client.get("/app/oauth/login")
+            response = await client.get(redirect(response))
+            assert redirect(response) == "/oauth/consent"
+            await client.get("/oauth/consent")
+            response = await client.post(
+                "/oauth/consent", data={"action": "allow", "csrf": client.cookies["oauth_csrf"]}
+            )
+            assert (await client.get(redirect(response))).status_code == 307
+            assert (await client.post("/app/oauth/consent")).status_code == 200
+
+        ticket = (await client.post("/app/oauth/ticket")).json()["ticket"]
+        cookies = {cookie.name: cookie.value for cookie in client.cookies.jar}
         async with websockets.connect(
             "wss://localhost:19490/app/stream?" + urlencode({"ticket": ticket}),
             ssl=ssl._create_unverified_context(),
@@ -143,9 +184,15 @@ async def oauth_check():
             ):
                 await mcp.initialize()
                 assert len((await mcp.list_tools()).tools) == 10
-                assert not (
-                    await mcp.call_tool("login", {"name": "ProxyOAuth", "class": "warrior"})
-                ).is_error
+                if host_first:
+                    assert (await mcp.call_tool("get_player", {})).structured_content[
+                        "id"
+                    ] == player["id"]
+                    assert json.loads(await socket.recv())["player"]["id"] == player["id"]
+                else:
+                    assert not (
+                        await mcp.call_tool("login", {"name": "ProxyOAuth", "class": "warrior"})
+                    ).is_error
                 assert not (await mcp.call_tool("get_player", {})).is_error
                 assert await move_player(mcp)
             assert (await client.post("/app/oauth/logout")).status_code == 200
@@ -266,6 +313,8 @@ with tempfile.TemporaryDirectory() as temp:
                 )
 
             assert response.json()["authMethods"] == ["token", "oauth"]
+            assert response.json()["oauthMcpUrl"] == "https://mcpgame.paulox.dev/mcp"
+            assert "set-cookie" not in response.headers
             response = client.get(
                 "https://localhost:19490/.well-known/oauth-protected-resource/mcp",
                 headers={"Host": "attacker.invalid", "X-Forwarded-Host": "internal:8000"},
@@ -294,6 +343,7 @@ with tempfile.TemporaryDirectory() as temp:
             assert client.get("https://localhost:19490" + asset).status_code == 200
         asyncio.run(client_check())
         asyncio.run(oauth_check())
+        asyncio.run(oauth_check(host_first=True))
         hardening = json.loads(
             docker(
                 "exec",
@@ -338,6 +388,9 @@ print(json.dumps({
                     "websocket": True,
                     "officialMcpClient": True,
                     "oauthPkceToolsLogout": True,
+                    "hostFirstAndBrowserFirst": True,
+                    "browserReusesHostPlayer": True,
+                    "publicEndpointBeforeLogin": True,
                     "nonRootNoCapabilities": True,
                     "noSetuidSetgid": True,
                     "unusedExecutablesAbsent": True,
