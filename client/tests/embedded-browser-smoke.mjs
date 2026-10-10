@@ -10,6 +10,7 @@ const redirect = callbackOrigin + '/connector_platform_oauth_redirect';
 const browser = await chromium.launch({...(process.env.TEST_CHROME ? {executablePath:process.env.TEST_CHROME} : {}), headless:true, args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const context = await browser.newContext({ignoreHTTPSErrors:true, viewport:{width:1024,height:768}, permissions:["clipboard-read","clipboard-write"]});
 const failures = [];
+const browserRequests = [];
 const unauthenticatedConsent = [];
 const unauthenticatedResponses = [];
 const analyticsRequests = [];
@@ -32,6 +33,12 @@ const capture = page => {
         failures.push(message.text());
     });
     page.on('response', response => {
+        const path = new URL(response.url()).pathname;
+
+        if (path.startsWith('/app/oauth/')) {
+            browserRequests.push({path,method:response.request().method(),status:response.status()});
+        }
+
         if (response.url() === base + '/app/oauth/consent' && response.request().method() === 'POST' && response.status() === 403) {
             unauthenticatedResponses.push(response.status());
         }
@@ -47,7 +54,15 @@ const waitFor = async predicate => {
         if(predicate()) return;
         await new Promise(resolve=>setTimeout(resolve,100));
     }
-    throw new Error('Timed out waiting for session');
+    throw new Error('Timed out waiting for session: '+JSON.stringify({browserRequests,failures}));
+};
+const gameReady = async page => {
+    await page.waitForLoadState('networkidle');
+    await page.locator('canvas').waitFor({state:'visible'});
+    await page.evaluate(async () => {
+        await document.fonts.ready;
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
 };
 const checkAuthorizationLayout = async (page, name) => {
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), 'dark');
@@ -111,11 +126,11 @@ try {
     assert.equal(hostFirstResult.tools,10);
     assert.equal(hostFirstResult.move,true);
     await hostFirstPage.goto(base);
-    await hostFirstPage.waitForTimeout(5000);
+    await gameReady(hostFirstPage);
     await hostFirstPage.mouse.click(512,440);
     await hostFirstPage.getByRole('button',{name:'Allow',exact:true}).click();
     await hostFirstPage.waitForURL(base+'/?auth=oauth');
-    await hostFirstPage.waitForTimeout(5000);
+    await gameReady(hostFirstPage);
     await hostFirstPage.mouse.click(512,440);
     await waitFor(() => joinedPlayers.length);
     assert.equal(joinedPlayers[0],hostFirstResult.player.id);
@@ -127,7 +142,7 @@ try {
     const page = await context.newPage();
     const tokenSessions = capture(page);
     await page.goto(base);
-    await page.waitForTimeout(3000);
+    await gameReady(page);
     await page.screenshot({path:'/tmp/oauth-dual-choice.png'});
     await page.mouse.click(512,498);
     await page.waitForTimeout(300);
@@ -148,7 +163,7 @@ try {
     const oauthPage = await context.newPage();
     const oauthSessions = capture(oauthPage);
     await oauthPage.goto(base);
-    await oauthPage.waitForTimeout(5000);
+    await gameReady(oauthPage);
     await oauthPage.mouse.click(512,440);
     await oauthPage.waitForTimeout(1500);
     await oauthPage.screenshot({path:'/tmp/oauth-after-select.png'});
@@ -170,7 +185,7 @@ try {
     assert.equal(await oauthPage.locator('details').evaluate(element => element.open), false);
     await oauthPage.getByRole('button',{name:'Allow',exact:true}).click();
     await oauthPage.waitForURL(base+'/?auth=oauth');
-    await oauthPage.waitForTimeout(5000);
+    await gameReady(oauthPage);
     await oauthPage.mouse.click(512,440);
     await waitFor(()=>oauthSessions.length);
     const oauth = oauthSessions[0];
