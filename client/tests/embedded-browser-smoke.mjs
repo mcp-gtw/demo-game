@@ -167,7 +167,7 @@ try {
     await oauthPage.goto(base);
     await gameReady(oauthPage);
     await oauthPage.mouse.click(512,440);
-    await oauthPage.waitForTimeout(1500);
+    await oauthPage.getByRole('heading',{name:'Sign in',exact:true}).waitFor();
     await oauthPage.screenshot({path:'/tmp/oauth-after-select.png'});
     await checkAuthorizationLayout(oauthPage, 'signin');
     assert.equal(await oauthPage.locator('.hint').count(), 2);
