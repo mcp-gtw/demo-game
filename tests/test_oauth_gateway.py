@@ -764,3 +764,37 @@ async def test_game05_storage_failure_after_verified_callback_does_not_create_ow
         assert not gateway._oauth_owners
         assert not gateway._sessions
         assert "game_session" not in client.cookies
+
+
+@pytest.mark.parametrize("elapsed, expected", [(180, 307), (599, 307), (600, 403), (601, 403)])
+async def test_browser_login_wait_and_expired_state_replay(gateway, monkeypatch, elapsed, expected):
+    clock = [time.time()]
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    identity = gateway.browser_oauth.identity
+    identity.exchange = AsyncMock(return_value=(ISSUER, "alice"))
+
+    async with client_for(gateway) as client:
+        response = await client.get("/app/oauth/login")
+        state = parse_qs(urlsplit(response.headers["location"]).query)["state"][0]
+        assert "Max-Age=600" in response.headers["set-cookie"]
+        clock[0] += elapsed
+        response = await client.get(
+            "/app/oauth/callback",
+            params={"state": state, "code": "alice", "iss": ISSUER},
+            headers={"cookie": "game_oauth_state=" + state},
+        )
+        assert response.status_code == expected
+        assert await gateway.browser_oauth.store.get("login", state) is None
+
+        if expected == 403:
+            identity.exchange.assert_not_awaited()
+            assert not gateway._sessions
+        else:
+            identity.exchange.assert_awaited_once()
+            assert len(gateway._sessions) == 1
+
+
+@pytest.mark.parametrize("timeout", [0, -1, 1801])
+def test_browser_login_timeout_rejects_invalid_values(timeout):
+    with pytest.raises(ValidationError):
+        AppSettings(oauth_login_timeout_seconds=timeout)

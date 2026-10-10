@@ -31,6 +31,7 @@ class AppSettings(BaseSettings):
     oauth_account_registration_enabled: bool = False
     websocket_ticket_ttl_seconds: float = Field(default=30, gt=0, le=60)
     session_idle_seconds: float = Field(default=900, gt=0, allow_inf_nan=False)
+    oauth_login_timeout_seconds: int = Field(default=600, ge=1, le=1800)
 
     oauth_browser_rate_limit_requests: int = Field(default=30, ge=1)
     oauth_browser_rate_limit_window_seconds: float = Field(default=60, gt=0, allow_inf_nan=False)
