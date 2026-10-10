@@ -11,17 +11,14 @@ RUN pip install --no-cache-dir --upgrade pip==26.2.1 uv==0.13.0
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY --from=client /src/app/web/dist ./src/app/web/dist
-RUN uv export --frozen --no-dev --no-emit-project --no-emit-package mcp-gtw \
+RUN uv export --frozen --no-dev --no-emit-project \
     --output-file requirements.txt && uv build --wheel
-
-COPY artifacts/*.whl /wheels/
 
 FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 GATEWAY_HOST=0.0.0.0
 WORKDIR /srv
 COPY --from=build /build/requirements.txt /tmp/requirements.txt
 COPY --from=build /build/dist /tmp/wheels
-COPY --from=build /wheels /tmp/wheels
 RUN pip install --no-cache-dir --upgrade pip==26.2.1 \
     && pip install --no-cache-dir --only-binary=:all: --require-hashes -r /tmp/requirements.txt \
     && pip install --no-cache-dir --no-deps /tmp/wheels/*.whl \

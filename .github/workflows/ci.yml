@@ -18,35 +18,17 @@ jobs:
     env:
       UV_PYTHON: ${{ matrix.python-version }}
     steps:
-      - name: Validate coordinated gateway commit
-        env:
-          GATEWAY_SHA: ${{ vars.GATEWAY_INTEGRATION_SHA }}
-        run: |
-          [[ "$GATEWAY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
-            echo "Set GATEWAY_INTEGRATION_SHA to the complete tested gateway commit" >&2
-            exit 1
-          }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-          repository: mcp-gtw/mcp-gtw
-          ref: ${{ vars.GATEWAY_INTEGRATION_SHA }}
-          path: mcp-gtw
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-          path: mcp-gtw-demo-game
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24.21.0"
       - name: Install uv
         run: pip install uv==0.13.0
       - name: Create the environment
-        working-directory: mcp-gtw-demo-game
         run: make install
       - name: Lint
-        working-directory: mcp-gtw-demo-game
         run: make lint
       - name: Coverage gate
-        working-directory: mcp-gtw-demo-game
         run: make coverage

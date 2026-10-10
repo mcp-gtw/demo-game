@@ -46,19 +46,19 @@ Codes are short-lived and consumed atomically. Refresh tokens rotate atomically;
 
 Run `make embedded-smoke` (with TEST_CHROME if needed) to exercise the actual production AS in Chrome over local HTTPS: account registration, browser PKCE, DCR host consent, official MCP initialize/tools/login/move, refresh, code replay rejection, logout and simultaneous Token. No simulator IdP is used for this target.
 
-Build the feature image with `make docker-build IMAGE=mcp-gtw-game:oauth` while the sibling gateway checkout is available. CI requires GATEWAY_INTEGRATION_SHA containing the full tested gateway commit; publish the new gateway before converting the coordinated source lock back to PyPI. Version 0.0.6 cannot run embedded OAuth. The supplied proxy must forward `/oauth/`, `/app/` and `/.well-known/` as well as `/mcp`; keep OAuth request queries out of logs.
+Build the image with `make docker-build IMAGE=mcp-gtw-game:oauth` or `docker build -t mcp-gtw-game:oauth .`. The lockfile installs gateway 0.0.7 from PyPI with verified artifact hashes. Development, CI and Docker builds do not require a sibling checkout or GATEWAY_INTEGRATION_SHA. Version 0.0.6 cannot run embedded OAuth. The supplied proxy must forward `/oauth/`, `/app/` and `/.well-known/` as well as `/mcp`; keep OAuth request queries out of logs.
 
 
-The final local container scan retains upstream Debian package alerts from the requested Python 3.14 slim base; it does not claim a zero-CVE image. The gateway's [container applicability review](https://github.com/mcp-gtw/mcp-gtw/blob/feat/oauth-embedded/docs/security.md#container-audit-scope) records the affected CLI/privileged components and the tested non-root runtime. Python and npm dependencies had no known audit vulnerabilities in that run.
+The final local container scan retains upstream Debian package alerts from the requested Python 3.14 slim base; it does not claim a zero-CVE image. The gateway's [container applicability review](https://github.com/mcp-gtw/mcp-gtw/blob/main/docs/security.md#container-audit-scope) records the affected CLI/privileged components and the tested non-root runtime. Python and npm dependencies had no known audit vulnerabilities in that run.
 
 Channel grants retain the approved scopes per client. A broader token cannot expand a read-only
 client's grant. Explicit re-consent replaces the scope set, and revoking one client preserves another
 client's grant until channel logout/removal revokes all of them. Tests exercise this distinction.
 
 The gateway coordinated acceptance workflow takes complete gateway/game/provider commit SHAs and
-executes the three-project gates, Chrome/Inspector flows and Docker HTTPS smoke. Set the demo repo
-variable GATEWAY_INTEGRATION_SHA after committing the gateway feature. The local worktree remains
-uncommitted until the maintainer is ready. The final grant schema stores approved scopes and requires
+executes the three-project gates, Chrome/Inspector flows and Docker HTTPS smoke. Game tests and
+images use the published gateway selected by the game lockfile. The final grant schema stores
+approved scopes and requires
 new grant storage for the feature, without historical-schema compatibility code.
 
 Explicit host consent writes a grant through GameConsentPolicy.approve. Authorization-code exchange

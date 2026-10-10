@@ -26,9 +26,6 @@ dev = [
     "ruff>=0.17.0,<1",
 ]
 
-[tool.uv.sources]
-mcp-gtw = { path = "../mcp-gtw", editable = true }
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/app"]
 exclude = ["src/app/web/dist/**"]

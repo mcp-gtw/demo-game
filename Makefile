@@ -40,9 +40,7 @@ run: client ## Serve the game on 127.0.0.1:8000
 docker-run: docker-build ## Build then run the image, serving on 127.0.0.1:8000
 	docker run --rm -p 8000:8000 $(IMAGE)
 
-docker-build: ## Build the game with the gateway feature wheel
-	mkdir -p artifacts
-	uv --directory ../mcp-gtw build --wheel --out-dir ../mcp-gtw-demo-game/artifacts
+docker-build: ## Build the game with locked PyPI dependencies
 	docker build -t $(IMAGE) .
 
 oauth-smoke: client ## Run the local HTTPS Token/OAuth browser integration
