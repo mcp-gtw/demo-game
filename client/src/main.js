@@ -164,6 +164,7 @@ async function pollInfo() {
         const info = await (await fetch("/app/info")).json();
         store.online = info.playersOnline;
         store.tools = info.tools ?? [];
+        store.oauthMcpUrl = info.oauthMcpUrl;
         const changed = JSON.stringify(store.availableAuthMethods) !== JSON.stringify(info.authMethods);
         store.availableAuthMethods = info.authMethods;
 

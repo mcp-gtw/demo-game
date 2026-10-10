@@ -11,11 +11,11 @@ authoritative grid world, its HTTP/WebSocket surface and a self-hosted Phaser cl
 
 The internal package name is intentionally generic (`app`) so the demo is easy to port or reuse.
 
-It requires `mcp-gtw>=0.0.9`, resolved from PyPI by the lockfile. Development, CI and Docker builds work without a sibling gateway checkout. See [docs/oauth.md](docs/oauth.md) for deployment.
+It requires `mcp-gtw>=0.0.10`, resolved from PyPI by the lockfile. Development, CI and Docker builds work without a sibling gateway checkout. See [docs/oauth.md](docs/oauth.md) for deployment.
 
 ## Documentation map
 
-- **OAuth** — separate browser/client authorization, responsive dark pages and finite login deadlines: [docs/oauth.md](docs/oauth.md).
+- **OAuth** — public endpoint before login, client-first embedded authorization, responsive dark pages and finite login deadlines: [docs/oauth.md](docs/oauth.md).
 - **OAuth budgets and scoped grants** — BFF limits are configurable by IP and verified account,
   and grants retain explicit client scopes. Extension points and invariants: [docs/oauth.md](docs/oauth.md).
 - **Full OAuth acceptance checklist** — [gateway checklist](https://github.com/mcp-gtw/mcp-gtw/blob/main/docs/oauth-implementation-checklist.md)
@@ -26,7 +26,8 @@ It requires `mcp-gtw>=0.0.9`, resolved from PyPI by the lockfile. Development, C
 
 ## Architecture (per-browser session, MCP-only login, camera follows your player)
 
-The gateway is a relay. Each browser opens **one session websocket** (`/app/stream`) that gives it a
+The gateway is a relay. An embedded MCP client can establish its account channel before browser
+login. Each browser opens **one session websocket** (`/app/stream`) that gives it a
 **private per-session channel** with an in-process provider (`provider.py`). The agent connects to
 that channel's MCP endpoint and calls `login`, the provider **adopts** the resulting player for the
 session, and the same websocket then streams the world. Everything after login is via MCP.
@@ -57,7 +58,7 @@ can run simultaneously. Authentication and persistence contracts: [docs/oauth.md
 - `room.py` — `Room`: one isolated game world with its own `World`, `GameService` and `StreamHub`.
 - `room_manager.py` — `RoomManager`: holds every room, guarantees a default room (`"world"`) from
   startup and can `create` more; the architecture is multi-room even while one room is in use.
-- `session.py` — `Session`: one browser session (its channel, the `room` it plays in, its adopted
+- `session.py` — `Session`: one game session (its channel, the `room` it plays in, its adopted
   player and live connections).
 - `provider.py` — `LocalProvider`: the per-session provider; every tool runs against the session's
   room `GameService`, adopts the player on `login`, rejects a second login, dispatches the rest.
@@ -491,7 +492,7 @@ make build      # build client, then wheel/sdist including the required browser 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/` | The single-page client: menu (connect box) that becomes the game on login. |
-| `GET` | `/app/info` | `{playersOnline, tools}` — for the login scene's online count and Tools window. |
+| `GET` | `/app/info` | `{authMethods, oauthMcpUrl, playersOnline, tools}` — public menu data and canonical OAuth URL before login. |
 | `GET` (WS) | `/app/stream` | The session socket, opened with `?token=<uuid>` in Token mode or a single-use `?ticket=<value>` in OAuth mode. Server → `session` (mcp url+token), then `login`, `catalog`, `map`, `snapshot`, `me`, `pong`. Client → `ping`, `me`. A missing/malformed token is refused. |
 | `GET` | `/static/...` | The self-hosted client, fonts and assets (served `no-cache`). |
 | `GET` | `/mcp/{sessionChannelId}`, `/provider`, `/health`, `/admin` | Inherited from the gateway. |

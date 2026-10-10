@@ -72,7 +72,8 @@ def test_http_surface():
         assert client.get("/play").status_code == 404
 
         info = client.get("/app/info").json()
-        assert set(info) == {"playersOnline", "tools", "authMethods"}
+        assert set(info) == {"playersOnline", "tools", "authMethods", "oauthMcpUrl"}
+        assert info["oauthMcpUrl"] is None
         assert info["playersOnline"] == 0
         names = {tool["name"] for tool in info["tools"]}
         assert {"login", "move", "speak"} <= names
@@ -317,7 +318,7 @@ async def test_teardown_without_a_player_still_removes_the_channel():
     channel = await gateway.create_channel(ttl_seconds=float("inf"))
     session = Session(channel.channel_id, "m", gateway.rooms.default)
     gateway._sessions[channel.channel_id] = session
-    await gateway._teardown_after_grace(session)
+    await gateway._teardown_when_idle(session, gateway.app_settings.session_grace_seconds)
     assert channel.channel_id not in gateway._sessions
     assert gateway.registry.get(channel.channel_id) is None
     await drain()
@@ -328,7 +329,7 @@ async def test_teardown_ignores_a_session_it_no_longer_owns():
     channel = await gateway.create_channel(ttl_seconds=float("inf"))
     orphan = Session(channel.channel_id, "m", gateway.rooms.default)
     # a session that is not the registered owner must not tear down the shared channel
-    await gateway._teardown_after_grace(orphan)
+    await gateway._teardown_when_idle(orphan, gateway.app_settings.session_grace_seconds)
     assert gateway.registry.get(channel.channel_id) is not None
     await drain()
 

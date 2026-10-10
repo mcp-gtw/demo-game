@@ -242,6 +242,9 @@ class AppGateway(Gateway):
             else ["oauth"]
             if self.app_settings.mcp_auth_mode == "oauth"
             else ["token", "oauth"],
+            "oauthMcpUrl": self.settings.oauth_resource_url
+            if self.browser_oauth is not None
+            else None,
             "playersOnline": sum(len(room.world.players) for room in self.rooms.all()),
             "tools": [
                 {"name": tool["name"], "description": tool["description"]}
@@ -434,10 +437,6 @@ class AppGateway(Gateway):
             existing = self._sessions.get(channel_id)
 
             if existing is not None:
-                if existing.teardown is not None:
-                    existing.teardown.cancel()
-                    existing.teardown = None
-
                 return existing
 
             channel = await self.create_channel(
@@ -447,14 +446,17 @@ class AppGateway(Gateway):
             await LocalProvider(channel, session).start()
             self._sessions[channel.channel_id] = session
             self._oauth_owners[owner] = channel.channel_id
+            self.schedule_idle_teardown(session, self.app_settings.session_idle_seconds)
             return session
 
     async def revoke_oauth_channel(self, channel_id: str) -> None:
         async with self._session_lock:
-            session = self._sessions.pop(channel_id, None)
+            session = self._sessions.get(channel_id)
 
             if session is None or session.auth_method != "oauth":
                 return
+
+            self._sessions.pop(channel_id)
 
             if session.teardown is not None:
                 session.teardown.cancel()
@@ -479,24 +481,34 @@ class AppGateway(Gateway):
             owner: cid for owner, cid in self._oauth_owners.items() if cid != channel.channel_id
         }
 
+    def schedule_idle_teardown(self, session: Session, delay_seconds: float) -> None:
+        if session.teardown is not None:
+            session.teardown.cancel()
+
+        session.teardown = asyncio.create_task(self._teardown_when_idle(session, delay_seconds))
+
     def _session_connect(self, session: Session) -> None:
+        if session.teardown is not None:
+            session.teardown.cancel()
+            session.teardown = None
+
         session.connections += 1
 
     def _session_disconnect(self, session: Session) -> None:
         session.connections -= 1
 
         if session.connections <= 0:
-            session.teardown = asyncio.create_task(self._teardown_after_grace(session))
+            self.schedule_idle_teardown(session, self.app_settings.session_grace_seconds)
 
-    async def _teardown_after_grace(self, session: Session) -> None:
+    async def _teardown_when_idle(self, session: Session, delay_seconds: float) -> None:
         try:
-            await asyncio.sleep(self.app_settings.session_grace_seconds)
+            await asyncio.sleep(delay_seconds)
         except asyncio.CancelledError:
             return
 
         # take the lock so a concurrent reconnect never reuses a session being reclaimed
         async with self._session_lock:
-            if self._sessions.get(session.channel_id) is not session:
+            if self._sessions.get(session.channel_id) is not session or session.connections > 0:
                 return
 
             self._sessions.pop(session.channel_id, None)

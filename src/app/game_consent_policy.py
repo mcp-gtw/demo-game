@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+from mcpgtw.errors import ChannelCapacityError
 from mcpgtw.oauth.consent_policy import ConsentPolicy
 from mcpgtw.oauth.verified_principal import VerifiedPrincipal
 
@@ -33,11 +34,23 @@ class GameConsentPolicy(ConsentPolicy):
     async def approve(
         self, subject: str, client_id: str, resource: str, scopes: frozenset[str]
     ) -> bool:
-        session = self._session(subject, resource, scopes)
-
-        if session is None:
+        if resource != self.gateway.settings.oauth_resource_url or not scopes <= {
+            "openid",
+            *self.gateway.settings.oauth_supported_scopes,
+        }:
             return False
 
+        try:
+            session = await self.gateway.acquire_oauth_session(
+                self.gateway.settings.oauth_embedded_issuer, subject
+            )
+        except ChannelCapacityError:
+            return False
+
+        session.oauth_authorized_until = int(
+            time.time() + self.gateway.app_settings.session_idle_seconds
+        )
+        self.gateway.schedule_idle_teardown(session, self.gateway.app_settings.session_idle_seconds)
         principal = VerifiedPrincipal(
             self.gateway.settings.oauth_embedded_issuer,
             subject,

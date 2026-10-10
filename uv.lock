@@ -597,7 +597,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.143.0,<1" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1,<1" },
-    { name = "mcp-gtw", specifier = ">=0.0.9" },
+    { name = "mcp-gtw", specifier = ">=0.0.10" },
     { name = "pydantic", specifier = ">=2.14.0,<3" },
     { name = "pydantic-settings", specifier = ">=2.15.0,<3" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.15.1,<3" },
@@ -611,7 +611,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "mcp-gtw"
-version = "0.0.9"
+version = "0.0.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -624,9 +624,9 @@ dependencies = [
     { name = "referencing" },
     { name = "uvicorn", extra = ["standard"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5d/e7/8f6c613ff9517314a3e60c69247cf5cac32d290ff4895f3909f6334e8d7a/mcp_gtw-0.0.9.tar.gz", hash = "sha256:eb0f2269e51497a478870e34bc37b95e1c0f95658515daa88b8dcaba581c6497", size = 508539, upload-time = "2026-10-10T03:25:22.529Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/eb/01/58fc7ac79b144c06f93bb7d0b2a56f5cfd6a4f4fcaa8ec3d1ef7e9fd0114/mcp_gtw-0.0.10.tar.gz", hash = "sha256:148b3138b0a842c1ec5b65b825e4273824f6448d99b4a7bfbc0cabeb0a7aba4b", size = 510358, upload-time = "2026-10-10T04:01:55.849Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/7d/da003cbfa190253801d5bab29ba34f78213245f750a9ad8a15d166b07da2/mcp_gtw-0.0.9-py3-none-any.whl", hash = "sha256:a0802155970479880181613b8946d6036860c75f4e36394def954074abceda0b", size = 121678, upload-time = "2026-10-10T03:25:21.198Z" },
+    { url = "https://files.pythonhosted.org/packages/47/1b/32574198adc71fdee21088a2eea69a84055f9d6107fb787ccb77a2762287/mcp_gtw-0.0.10-py3-none-any.whl", hash = "sha256:e988447b28cf02099d9a895bff5b8885361fdd7fd06fa8468e11245fc594fb9c", size = 121523, upload-time = "2026-10-10T04:01:54.452Z" },
 ]
 
 [[package]]
