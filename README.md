@@ -128,3 +128,5 @@ Licensed under [MIT](LICENSE.md).
 Token is the default. Dual mode offers Token and OAuth in the same game. OAuth can use the embedded authorization server on the game domain or a configured external identity provider. See [authentication and deployment](docs/oauth.md).
 
 Embedded OAuth on the game domain uses the published gateway 0.0.7 from PyPI. Docker builds require only this repository. See [authentication and deployment](docs/oauth.md) and `.env.oauth.example`.
+
+Browser login permits ten minutes by default through `APP_OAUTH_LOGIN_TIMEOUT_SECONDS`. Keep the authorization server login window aligned. Enable embedded account creation explicitly with `APP_OAUTH_ACCOUNT_REGISTRATION_ENABLED=true`. See [login deadlines and release sequencing](docs/oauth.md#browser-flow-and-revocation).

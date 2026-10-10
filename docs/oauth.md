@@ -16,6 +16,14 @@ Copy `.env.oauth.external.example`, replace the issuer, JWKS endpoint, client ID
 
 ## Browser flow and revocation
 
+The browser login transaction and state cookie use APP_OAUTH_LOGIN_TIMEOUT_SECONDS (600 seconds,
+maximum 1800). This allows account creation and consent without the former two-minute callback
+deadline. The deadline is absolute and expired state remains invalid even if its cookie is replayed.
+Keep this timeout aligned with the authorization server's login/consent window. The gateway 0.0.7
+embedded server still has a two-minute login window. Its separate-window fix must be published to
+PyPI before upgrading this project's dependency, and the browser timeout change alone does not
+extend that older server window.
+
 The BFF creates a short-lived login transaction with state, nonce and PKCE. Callback verifies the issuer response, transaction cookie, one-use state, signature, ID-token audience and nonce. Duplicate/ambiguous session and login-state cookies are rejected on HTTP and WebSocket entry. The session cookie is Secure, HttpOnly, SameSite=Lax and restricted to `/app`. SQLite stores hashes of cookie/ticket identifiers, private transaction payloads and finite expiries. New databases are created with mode 0600; keep existing databases and their directory private. Protect this database as sensitive data: PKCE verifiers exist temporarily in login payloads. Browser OAuth tokens are not sent to localStorage, clipboard, logs or the WebSocket.
 
 Choosing OAuth is explicit consent for the configured `APP_OAUTH_MCP_CLIENT_IDS` to control this account's game channel. The BFF grants access only to those exact issuer/subject/client tuples, bounded by the browser session expiry. Expired durable grants are purged transactionally, including orphaned generations after restart. Configure this allowlist narrowly. The frontend then obtains a cookie-bound, origin-bound, single-use WebSocket ticket (30 seconds by default). Every reconnect needs a new ticket. Mixing token and ticket parameters is rejected. The provider credential is internal and is never a substitute for OAuth.

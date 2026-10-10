@@ -15,7 +15,7 @@ It requires `mcp-gtw>=0.0.7`, resolved from PyPI by the lockfile. Development, C
 
 ## Documentation map
 
-- **OAuth** — public MCP authorization and private provider credential boundaries: [docs/oauth.md](docs/oauth.md).
+- **OAuth** — public MCP authorization, explicit account registration and finite browser login deadlines: [docs/oauth.md](docs/oauth.md).
 - **OAuth budgets and scoped grants** — BFF limits are configurable by IP and verified account,
   and grants retain explicit client scopes. Extension points and invariants: [docs/oauth.md](docs/oauth.md).
 - **Full OAuth acceptance checklist** — [gateway checklist](https://github.com/mcp-gtw/mcp-gtw/blob/main/docs/oauth-implementation-checklist.md)

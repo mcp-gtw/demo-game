@@ -80,7 +80,11 @@ class BrowserOAuth:
         verifier = secrets.token_urlsafe(48)
         nonce = secrets.token_urlsafe(32)
         try:
-            state = await self.store.put("login", {"verifier": verifier, "nonce": nonce}, 120)
+            state = await self.store.put(
+                "login",
+                {"verifier": verifier, "nonce": nonce},
+                self.settings.oauth_login_timeout_seconds,
+            )
             challenge = (
                 base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
                 .rstrip(b"=")
@@ -92,7 +96,7 @@ class BrowserOAuth:
             return self._denied()
 
         response = RedirectResponse(url)
-        self._cookie(response, "game_oauth_state", state, 120)
+        self._cookie(response, "game_oauth_state", state, self.settings.oauth_login_timeout_seconds)
         return response
 
     async def callback(self, request: Request) -> Response:
