@@ -35,7 +35,7 @@ try {
     await page.goto(base);
     await page.waitForTimeout(3000);
     await page.screenshot({path:'/tmp/oauth-dual-choice.png'});
-    await page.mouse.click(512,405);
+    await page.mouse.click(512,384);
     await waitFor(()=>tokenSessions.length);
     const token = tokenSessions[0];
     assert.ok(!token.authMethod);
@@ -48,13 +48,13 @@ try {
     const oauthSessions = capture(oauthPage);
     await oauthPage.goto(base);
     await oauthPage.waitForTimeout(5000);
-    await oauthPage.mouse.click(512,465);
+    await oauthPage.mouse.click(512,440);
     await oauthPage.waitForTimeout(1500);
     await oauthPage.screenshot({path:'/tmp/oauth-after-select.png'});
     await oauthPage.getByRole('button',{name:'Approve local test'}).click();
     await oauthPage.waitForURL(base+'/?auth=oauth');
     await oauthPage.waitForTimeout(5000);
-    await oauthPage.mouse.click(512,465);
+    await oauthPage.mouse.click(512,440);
     await waitFor(()=>oauthSessions.length);
     const oauth = oauthSessions[0];
     assert.equal(oauth.authMethod,'oauth');
@@ -94,7 +94,7 @@ try {
     const denied = await context.request.post(base+'/mcp',{headers:{Authorization:'Bearer '+credentials.access_token},data:{jsonrpc:'2.0',id:1,method:'tools/list'}});
     assert.equal(denied.status(),404);
     const beforeSwitch = oauthSessions.length;
-    await oauthPage.mouse.click(512,420);
+    await oauthPage.mouse.click(512,384);
     await waitFor(()=>oauthSessions.length > beforeSwitch);
     const switched = oauthSessions.at(-1);
     assert.equal(switched.mcpToken,token.mcpToken);

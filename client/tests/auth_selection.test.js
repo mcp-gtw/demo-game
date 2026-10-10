@@ -35,7 +35,7 @@ vi.mock("../src/ui/Window.js", () => ({ Window: fakes.Window }));
 import { LoginScene } from "../src/scenes/LoginScene.js";
 
 function sceneFor({ method = "token", available = ["token", "oauth"], session = null } = {}) {
-    const store = { availableAuthMethods: available, selectedAuthMethod: method, session,
+    const store = { availableAuthMethods: available, oauthMcpUrl: available.includes("oauth") ? "https://game/mcp" : null, selectedAuthMethod: method, session,
         online: 2, status: "connecting", tools: [], selectAuthMethod: vi.fn(), switchAuth: vi.fn() };
     const scene = new LoginScene();
     scene.add = { container: () => new fakes.Node(), image: () => new fakes.Node(), text: (x, y, value) => new fakes.Node().setText(value) };
@@ -51,13 +51,27 @@ beforeEach(() => { fakes.windows.length = 0; });
 
 it("dual offers both methods before creating any browser session", () => {
     const { scene, store } = sceneFor({ method: null });
-    expect(scene.authButtons.map((button) => button.options.text)).toEqual(["Connect with Token", "Connect with OAuth"]);
+    expect(scene.authButtons.map((button) => button.options.text)).toEqual(["Connect with Token", "Connect with OAuth", "OAuth Endpoint"]);
     expect(scene.loginButton.root.visible).toBe(false);
     scene.authButtons[0].options.onClick();
     scene.authButtons[1].options.onClick();
     expect(store.selectAuthMethod.mock.calls).toEqual([["token"], ["oauth"]]);
     scene.update(0, 16);
-    expect(scene.status.value).toContain("Choose Token");
+    expect(scene.status.value).toContain("Choose how to connect");
+});
+
+it("does not offer an OAuth endpoint when only Token is enabled", () => {
+    const { scene } = sceneFor({ method: null, available: ["token"] });
+    expect(scene.authButtons.map((button) => button.options.text)).toEqual(["Connect with Token"]);
+});
+
+it("copies the public OAuth endpoint before login without opening a session", () => {
+    const { scene, store } = sceneFor({ method: null });
+    scene.authButtons[2].options.onClick();
+    expect(fakes.windows[0].options.body).toBe("https://game/mcp");
+    expect(fakes.windows[0].options.copies).toEqual([{ label: "Copy URL", value: "https://game/mcp" }]);
+    expect(store.selectAuthMethod).not.toHaveBeenCalled();
+    expect(store.session).toBeNull();
 });
 
 it("Token preserves all four options, separate copies and switching", () => {

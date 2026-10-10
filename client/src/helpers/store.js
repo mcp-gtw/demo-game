@@ -3,6 +3,7 @@
 export function createStore() {
     return {
         availableAuthMethods: [],
+        oauthMcpUrl: null,
         selectedAuthMethod: null,
         selectAuthMethod: null,
         switchAuth: null,

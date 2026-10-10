@@ -285,14 +285,17 @@ async def test_game06_account_switch_and_channel_generation(gateway):
         await login(client)
         await client.post("/app/oauth/consent")
         first = next(iter(gateway._sessions.values()))
-        first.teardown = asyncio.create_task(asyncio.sleep(100))
+        pending = first.teardown
         same = await gateway.acquire_oauth_session(ISSUER, "alice")
         assert same is first
+        assert same.teardown is pending
+        gateway._session_connect(same)
         assert same.teardown is None
+        gateway._session_disconnect(same)
         await login(client, "bob")
         assert gateway.registry.get(first.channel_id) is None
         second = next(iter(gateway._sessions.values()))
-        second.teardown = asyncio.create_task(asyncio.sleep(100))
+        gateway.schedule_idle_teardown(second, 100)
         await gateway.revoke_oauth_channel(second.channel_id)
         assert gateway.registry.get(second.channel_id) is None
         assert (await client.post("/app/oauth/consent")).status_code == 403

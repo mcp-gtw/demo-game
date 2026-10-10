@@ -8,7 +8,7 @@ from app.room import Room
 
 @dataclass(slots=True)
 class Session:
-    """One browser session: its private channel, the room it plays in and its adopted player."""
+    """One game session: its private channel, the room it plays in and its adopted player."""
 
     channel_id: str
     mcp_token: str

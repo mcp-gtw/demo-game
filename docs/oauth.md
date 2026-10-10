@@ -2,7 +2,7 @@
 
 `APP_MCP_AUTH_MODE=legacy` is the default: the browser keeps its UUID in localStorage, opens `/app/stream?token=<UUID>`, receives the original MCP URL and `mcp-UUID` token, and keeps all four connection options. OAuth is not required in this mode.
 
-`dual` displays **Connect with Token** and **Connect with OAuth** before opening a game session. Both methods work in the same process. Token uses the unchanged UUID flow and original clipboard builders. OAuth never reads that UUID, receives no MCP bearer token, and uses a separate account-owned random channel. The game still runs tools through the Python `LocalProvider`; it does not use the JavaScript provider SDK.
+`dual` displays **Connect with Token**, **Connect with OAuth** and **OAuth Endpoint** before opening a game session. Both methods work in the same process. Token uses the unchanged UUID flow and original clipboard builders. OAuth never reads that UUID, receives no MCP bearer token, and uses a separate account-owned random channel. The game still runs tools through the Python `LocalProvider`; it does not use the JavaScript provider SDK.
 
 `oauth` offers only OAuth. `dual` requires `GATEWAY_OAUTH_ALLOW_STATIC_MCP_TOKENS=true`; `oauth` requires false. Inconsistent modes fail at startup. Legacy channels alone are eligible for the hybrid static-token path.
 
@@ -16,12 +16,20 @@ Copy `.env.oauth.external.example`, replace the issuer, JWKS endpoint, client ID
 
 ## Browser flow and revocation
 
-Browser sign-in and MCP-client authorization are separate steps. In the game, choose OAuth, sign
-in or create an account, and authorize the browser channel. Copy the **OAuth Endpoint** shown in
-the connection options into your MCP client. That client discovers the authorization server and
-opens its own login or consent flow. An existing issuer login session can go directly to consent.
-Do not use `/oauth/login` or `/oauth/authorize` as the MCP connection URL. Those routes require a
-transaction started by an OAuth client.
+Browser sign-in and MCP-client authorization are separate flows. **OAuth Endpoint** is available
+in the initial OAuth/dual menu before login. Copy `https://mcpgame.paulox.dev/mcp` into your MCP
+client. Reading or copying the public URL does not create a channel or a browser session. The
+client's anonymous request receives the OAuth discovery challenge, discovers the issuer, registers
+its callback and starts authorization with state and PKCE. It opens the login/signup page and
+then asks for explicit consent. An existing issuer login session goes directly to consent.
+
+With the embedded server, that verified account and explicit host approval establish its random
+private channel even if the game has never been opened. The MCP client can initialize, discover
+tools and call `login` to create its playable character. **Connect with OAuth** in the game signs
+the browser into the same account, authorizes its stream and displays that same player. Starting
+with browser login remains supported. An external IdP requires the application's existing channel
+and configured host grants. Do not use `/oauth/login` or `/oauth/authorize` as a connection URL.
+Those routes require a transaction started by an OAuth client.
 
 The browser login transaction and state cookie use `APP_OAUTH_LOGIN_TIMEOUT_SECONDS` (600 seconds,
 maximum 1800). The embedded server independently uses
@@ -58,11 +66,11 @@ Set a private persistent `/data` volume owned by UID/GID 10001. `oauth.sqlite` c
 
 `APP_OAUTH_ACCOUNT_REGISTRATION_ENABLED` defaults false. The embedded example explicitly enables self-service accounts; the real sign-in page offers account creation and username/password login. Passwords are salted PBKDF2-HMAC-SHA256 with 600,000 iterations, processed in bounded background workers. There are no default accounts or passwords. Disable registration after creating accounts if this is a private deployment. Signing in is separate from the MCP `login` tool, which creates the playable character.
 
-After browser login, select OAuth in the game to authorize its channel. Each MCP host registers its exact callback and then receives a separate named consent screen. Approval grants only the authenticated account's current channel; no guessed channel or email-based account linking. `APP_OAUTH_MCP_CLIENT_IDS` can be empty in embedded mode, because dynamically registered clients receive explicit approval in that screen; an external IdP still requires the fixed allowlist. Hosts can use safe CIMD, opt-in DCR or pre-registration. They must include the canonical `/mcp` resource in both authorization and token requests and use PKCE S256. OAuth tool listings declare their scopes in securitySchemes and _meta; tool denials include the reauthentication challenge without invoking LocalProvider.
+The MCP host can initiate login/signup and named consent before browser login. Each host registers its exact callback. Approval acquires only the authenticated account's channel and grants the requested scopes for that client. An existing account channel is reused. No guessed channel or email-based account linking is accepted. `APP_OAUTH_MCP_CLIENT_IDS` can be empty in embedded mode, because dynamically registered clients receive explicit approval in that screen; an external IdP still requires the fixed allowlist. Hosts can use safe CIMD, opt-in DCR or pre-registration. They must include the canonical `/mcp` resource in both authorization and token requests and use PKCE S256. OAuth tool listings declare their scopes in securitySchemes and _meta; tool denials include the reauthentication challenge without invoking LocalProvider.
 
 Codes are short-lived and consumed atomically. Refresh tokens rotate atomically; replay revokes the entire family, including existing access JWTs. Access verification checks the family in SQLite rather than relying only on JWT expiry. Game logout/channel removal revokes families, login sessions and pending codes for that subject. Channel generations are bound at consent and checked again at exchange/refresh, so an old grant cannot authorize a replacement session. Previously admitted tool executions may finish; new requests/emissions are denied.
 
-Run `make embedded-smoke` (with TEST_CHROME if needed) to exercise the actual production AS in Chrome over local HTTPS: account registration, browser PKCE, DCR host consent, official MCP initialize/tools/login/move, refresh, code replay rejection, logout and simultaneous Token. No simulator IdP is used for this target.
+Run `make embedded-smoke` (with TEST_CHROME if needed) to exercise the actual production AS in Chrome over local HTTPS: public URL clipboard before login, discovery, client-first signup and consent, official MCP initialize/tools/login/move, later browser login reusing that player, browser-first PKCE, DCR, refresh, code replay rejection, logout and simultaneous Token. No simulator IdP is used for this target.
 
 Build the image with `make docker-build IMAGE=mcp-gtw-game:oauth` or `docker build -t mcp-gtw-game:oauth .`. The lockfile installs gateway 0.0.9 from PyPI with verified artifact hashes. Development, CI and Docker builds do not require a sibling checkout or GATEWAY_INTEGRATION_SHA. The supplied proxy must forward `/oauth/`, `/app/` and `/.well-known/` as well as `/mcp`; keep OAuth request queries out of logs.
 
@@ -91,3 +99,20 @@ Packaging fails if the required bundle is missing, preventing a successful Pytho
 
 Session cookie names must be ASCII identifiers. Invalid or Unicode cookie names fail settings
 validation at startup, before a login handler attempts to emit an invalid HTTP cookie.
+
+
+## Public endpoint and host-only lifetime
+
+`GET /app/info` publishes `authMethods`, `oauthMcpUrl`, `playersOnline` and `tools`. `oauthMcpUrl`
+is the configured canonical resource URL whenever browser OAuth is enabled, and `null` in Token-only
+mode. It is independent of Host and forwarded headers and contains no account/channel credential.
+
+A newly acquired OAuth channel without a browser stream gets a finite idle teardown using
+`APP_SESSION_IDLE_SECONDS`. Explicit host consent sets the grant deadline to that interval and
+reschedules idle teardown. Code exchange and refresh never extend it. Repeated ownership lookup
+alone does not cancel cleanup. A successfully accepted browser stream cancels the idle timer,
+while its last disconnect schedules the shorter `APP_SESSION_GRACE_SECONDS` teardown. The teardown
+checks ownership and live connection count under the session lock before reclaiming a channel.
+Removal revokes its grants, embedded login/code/token families and player. Browser session and
+grant expiry are still enforced on active streams and MCP requests. Explicit fresh consent can
+renew permissions, but refresh cannot recover expired or revoked access.

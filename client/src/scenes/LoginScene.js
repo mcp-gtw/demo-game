@@ -58,11 +58,21 @@ export class LoginScene extends Phaser.Scene {
 
         if (!this.store.selectedAuthMethod) {
             this.loginButton.root.setVisible(false);
-            this.status.setText("Choose Token, or sign in and authorize MCP clients to control your game with OAuth.");
+            this.status.setText("Choose how to connect your MCP client.");
             this.authButtons = this.store.availableAuthMethods.map((method) => new TextButton(this, {
                 text: method === "token" ? "Connect with Token" : "Connect with OAuth",
                 onClick: () => this.store.selectAuthMethod(method),
             }));
+
+            if (this.store.availableAuthMethods.includes("oauth")) {
+                this.authButtons.push(new TextButton(this, {
+                    text: "OAuth Endpoint",
+                    onClick: () => this.#open("OAuth Endpoint", this.store.oauthMcpUrl, {
+                        mono: true,
+                        copies: [{ label: "Copy URL", value: this.store.oauthMcpUrl }],
+                    }),
+                }));
+            }
 
             for (const button of this.authButtons) {
                 this.card.add(button.root);
