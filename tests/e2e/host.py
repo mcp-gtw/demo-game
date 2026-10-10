@@ -17,8 +17,9 @@ async def main():
         streamable_http_client(config["url"], http_client=http) as (read, write),
         ClientSession(read, write) as session,
     ):
-        await session.initialize()
+        await session.discover()
         listed = await session.list_tools()
+        assert len(listed.tools) == 10
         assert {"login", "move", "get_player"} <= {tool.name for tool in listed.tools}
         if config.get("name") is None:
             player = await session.call_tool("get_player", {})
@@ -26,7 +27,11 @@ async def main():
             print(json.dumps({"player": player.structured_content}))
             return
 
-        login = await session.call_tool("login", {"name": config["name"], "class": "warrior"})
+        login = await session.call_tool(
+            "login",
+            {"name": config["name"], "class": "warrior"},
+            meta={"openai/locale": "en-US", "openai/userAgent": "ChatGPT"},
+        )
         assert not login.is_error, login
         player = await session.call_tool("get_player", {})
         assert not player.is_error, player

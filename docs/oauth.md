@@ -56,11 +56,11 @@ SQLite is a single-host persistence adapter. Owned HTTP clients close on shutdow
 
 `make oauth-smoke` builds the frontend and runs a loopback-only test IdP, HTTPS game, Chrome and the official Python MCP client. It exercises simultaneous Token/OAuth login, tool calls, one-use authorization code and logout revocation, and writes screenshots to `/tmp`. Its IdP is test-only and must never be deployed. See `tests/e2e/README.md` for requirements.
 
-Unit/ASGI tests cover hostile tokens, callback/state/origin checks, one-use ticket races, account changes, grace reconnects, credential separation, dual modes and actual LoginScene rendering with Phaser fakes. Real ChatGPT and Claude account/workspace tests and public deployment remain pending; local tests exercise the actual embedded server as well as the external-IdP path.
+Unit/ASGI tests cover hostile tokens, callback/state/origin checks, one-use ticket races, account changes, grace reconnects, credential separation, dual modes and actual LoginScene rendering with Phaser fakes. Actual ChatGPT/Claude workspace action import after the corrected deployment remains pending; local tests exercise the actual embedded server as well as the external-IdP path.
 
 ## Embedded login on the game domain
 
-With gateway 0.0.11, `.env.oauth.example` enables Token + OAuth at `https://mcpgame.paulox.dev` without an external IdP. The issuer is that exact origin. The gateway serves `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`, `/oauth/authorize`, `/oauth/login`, `/oauth/consent`, `/oauth/token`, `/oauth/jwks` and `/oauth/revoke`. Optional `/oauth/register` supports bounded public-client DCR; the example explicitly enables it. CIMD is enabled by default for public HTTPS client metadata with DNS/peer validation and bounded fetching; private_key_jwt is not advertised.
+With gateway 0.0.12, `.env.oauth.example` enables Token + OAuth at `https://mcpgame.paulox.dev` without an external IdP. The issuer is that exact origin. The gateway serves `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`, `/oauth/authorize`, `/oauth/login`, `/oauth/consent`, `/oauth/token`, `/oauth/jwks` and `/oauth/revoke`. Optional `/oauth/register` supports bounded public-client DCR; the example explicitly enables it. CIMD is enabled by default for public HTTPS client metadata with DNS/peer validation and bounded fetching; private_key_jwt is not advertised.
 
 Set a private persistent `/data` volume owned by UID/GID 10001. `oauth.sqlite` contains real accounts, browser sessions, hashed codes/refresh identifiers and grants; `oauth.sqlite.key` contains the persistent RSA private key (0600). Back up both together. The key is generated only when missing and never put in the environment, frontend or image. Replacing it invalidates signed tokens. The browser client ID/secret are pre-registered from APP_OIDC_CLIENT_ID/APP_OIDC_CLIENT_SECRET; generate a random secret once and retain it across restarts. The browser callback is `/app/oauth/callback`.
 
@@ -70,9 +70,9 @@ The MCP host can initiate login/signup and named consent before browser login. E
 
 Codes are short-lived and consumed atomically. Refresh tokens rotate atomically; replay revokes the entire family, including existing access JWTs. Access verification checks the family in SQLite rather than relying only on JWT expiry. Game logout/channel removal revokes families, login sessions and pending codes for that subject. Channel generations are bound at consent and checked again at exchange/refresh, so an old grant cannot authorize a replacement session. Previously admitted tool executions may finish; new requests/emissions are denied.
 
-Run `make embedded-smoke` (with TEST_CHROME if needed) to exercise the actual production AS in Chrome over local HTTPS: public URL clipboard before login, discovery, client-first signup and consent, official MCP initialize/tools/login/move, later browser login reusing that player, browser-first PKCE, DCR, refresh, code replay rejection, logout and simultaneous Token. No simulator IdP is used for this target.
+Run `make embedded-smoke` (with TEST_CHROME if needed) to exercise the actual production AS in Chrome over local HTTPS: public URL clipboard before login, discovery, client-first signup and consent, official modern MCP discovery/tools/login/move, later browser login reusing that player, browser-first PKCE, DCR, refresh, code replay rejection, logout and simultaneous Token. No simulator IdP is used for this target.
 
-Build the image with `make docker-build IMAGE=mcp-gtw-game:oauth` or `docker build -t mcp-gtw-game:oauth .`. The lockfile installs gateway 0.0.11 from PyPI with verified artifact hashes. Development, CI and Docker builds do not require a sibling checkout or GATEWAY_INTEGRATION_SHA. The supplied proxy must forward `/oauth/`, `/app/` and `/.well-known/` as well as `/mcp`; keep OAuth request queries out of logs.
+Build the image with `make docker-build IMAGE=mcp-gtw-game:oauth` or `docker build -t mcp-gtw-game:oauth .`. The lockfile installs gateway 0.0.12 from PyPI with verified artifact hashes. Development, CI and Docker builds do not require a sibling checkout or GATEWAY_INTEGRATION_SHA. The supplied proxy must forward `/oauth/`, `/app/` and `/.well-known/` as well as `/mcp`; keep OAuth request queries out of logs.
 
 
 The final local container scan retains upstream Debian package alerts from the requested Python 3.14 slim base; it does not claim a zero-CVE image. The gateway's [container applicability review](https://github.com/mcp-gtw/mcp-gtw/blob/main/docs/security.md#container-audit-scope) records the affected CLI/privileged components and the tested non-root runtime. Python and npm dependencies had no known audit vulnerabilities in that run.
@@ -138,3 +138,16 @@ Analytics page URLs exclude queries and fragments. Authorization pages remain sc
 browser gate checks that OAuth game pages issue no Analytics requests, alongside zero unexpected
 console errors. Two unauthenticated BFF consent probes must return HTTP 403 and start sign-in.
 Those expected HTTP denials are checked explicitly and do not hide unrelated errors or CSP failures.
+
+## Modern MCP action discovery
+
+Gateway 0.0.12 reads the SDK request metadata dictionary correctly and publishes the OAuth
+securitySchemes extension after protocol serialization. This fixes the server exception that
+prevented ChatGPT from importing tools after successful OAuth authentication. Request metadata
+does not establish account identity or replace channel grants.
+
+The embedded and external-IdP browser gates use the official MCP client with modern discovery
+and per-request envelopes. They list all ten tools and execute login/get_player/move with actual
+position changes. The Docker/nginx host-first check uses the same modern flow, while its
+browser-first and static checks also exercise initialization. These checks do not prove that an
+individual ChatGPT workspace has refreshed its saved tool catalog after deployment.

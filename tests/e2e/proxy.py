@@ -148,7 +148,7 @@ async def oauth_check(host_first=False):
                 streamable_http_client(base + "/mcp", http_client=transport) as (read, write),
                 ClientSession(read, write) as mcp,
             ):
-                await mcp.initialize()
+                await mcp.discover()
                 assert len((await mcp.list_tools()).tools) == 10
                 assert not (await mcp.call_tool("login", {"name": "ProxyHostFirst"})).is_error
                 player = (await mcp.call_tool("get_player", {})).structured_content

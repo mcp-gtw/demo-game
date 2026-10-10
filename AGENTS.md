@@ -11,11 +11,12 @@ authoritative grid world, its HTTP/WebSocket surface and a self-hosted Phaser cl
 
 The internal package name is intentionally generic (`app`) so the demo is easy to port or reuse.
 
-It requires `mcp-gtw>=0.0.11`, resolved from PyPI by the lockfile. Development, CI and Docker builds work without a sibling gateway checkout. See [docs/oauth.md](docs/oauth.md) for deployment.
+It requires `mcp-gtw>=0.0.12`, resolved from PyPI by the lockfile. Development, CI and Docker builds work without a sibling gateway checkout. See [docs/oauth.md](docs/oauth.md) for deployment.
 
 ## Documentation map
 
 - **OAuth** — public endpoint before login, client-first embedded authorization, responsive dark pages and finite login deadlines: [docs/oauth.md](docs/oauth.md).
+- **Modern MCP discovery** — the browser and proxy gates exercise per-request discovery and actual tool execution with the published gateway: [docs/oauth.md](docs/oauth.md#modern-mcp-action-discovery).
 - **OAuth budgets and scoped grants** — BFF limits are configurable by IP and verified account,
   and grants retain explicit client scopes. Extension points and invariants: [docs/oauth.md](docs/oauth.md).
 - **Full OAuth acceptance checklist** — [gateway checklist](https://github.com/mcp-gtw/mcp-gtw/blob/main/docs/oauth-implementation-checklist.md)
