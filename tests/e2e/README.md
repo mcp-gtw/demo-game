@@ -20,7 +20,9 @@ Build the image with the locked PyPI dependencies with `make docker-build IMAGE=
 
 ## Embedded production server
 
-Run `make embedded-smoke` with TEST_CHROME when necessary. This starts the actual embedded authorization server inside the HTTPS game on port 19443 and uses an isolated private database/key and a real newly registered account. It does not start the simulator IdP. Chrome exercises browser sign-in, consent, DCR, host PKCE, the official MCP client and game tools, refresh, code replay rejection, logout and Token coexistence. Test-only TLS certificates remain confined to loopback.
+Run `make embedded-smoke` with TEST_CHROME when necessary. This starts the actual embedded authorization server inside the HTTPS game on port 19443 and uses an isolated private database/key and a real newly registered account. It does not start the simulator IdP. Chrome exercises browser sign-in, consent, DCR, host PKCE, the official MCP client and game tools, refresh, code replay rejection, logout and Token coexistence. Test-only TLS certificates remain confined to loopback. The actual embedded sign-in and consent pages are also checked for dark styling, compact hints,
+touch target height and horizontal overflow at 1440x900, 390x844, 320x568 and 844x390. Screenshots
+are saved as `/tmp/oauth-game-{signin,consent}-{desktop,mobile,small,landscape}.png`.
 
 
 To also run the MCP Inspector CLI against the authorized embedded server, set the verified Inspector version explicitly:

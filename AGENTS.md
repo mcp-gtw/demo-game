@@ -11,11 +11,11 @@ authoritative grid world, its HTTP/WebSocket surface and a self-hosted Phaser cl
 
 The internal package name is intentionally generic (`app`) so the demo is easy to port or reuse.
 
-It requires `mcp-gtw>=0.0.8`, resolved from PyPI by the lockfile. Development, CI and Docker builds work without a sibling gateway checkout. See [docs/oauth.md](docs/oauth.md) for deployment.
+It requires `mcp-gtw>=0.0.9`, resolved from PyPI by the lockfile. Development, CI and Docker builds work without a sibling gateway checkout. See [docs/oauth.md](docs/oauth.md) for deployment.
 
 ## Documentation map
 
-- **OAuth** — public MCP authorization, explicit account registration and finite browser login deadlines: [docs/oauth.md](docs/oauth.md).
+- **OAuth** — separate browser/client authorization, responsive dark pages and finite login deadlines: [docs/oauth.md](docs/oauth.md).
 - **OAuth budgets and scoped grants** — BFF limits are configurable by IP and verified account,
   and grants retain explicit client scopes. Extension points and invariants: [docs/oauth.md](docs/oauth.md).
 - **Full OAuth acceptance checklist** — [gateway checklist](https://github.com/mcp-gtw/mcp-gtw/blob/main/docs/oauth-implementation-checklist.md)
@@ -50,8 +50,10 @@ can run simultaneously. Authentication and persistence contracts: [docs/oauth.md
 - `gateway.py` — `AppGateway(Gateway)`: ticks and broadcasts **every room** in `serve`, drives the session
   websocket lifecycle (create/resume, wait-for-login, stream, teardown) and adds `/app/info`,
   `/app/stream`, `/static` and home. `RevalidatingStaticFiles` serves the client `no-cache`.
-- `oauth/` — browser BFF, embedded identity and consent, durable sessions/tickets, rate limits and
-  account channel ownership. Extension contracts: [docs/oauth.md](docs/oauth.md).
+- `browser_oauth.py`, `browser_identity.py`, `embedded_browser_identity.py`,
+  `browser_session.py`, `browser_cookie.py`, `oauth_websocket.py`, `game_consent_policy.py` —
+  browser BFF, identity/consent, durable sessions/tickets and account channel ownership.
+  Extension contracts: [docs/oauth.md](docs/oauth.md).
 - `room.py` — `Room`: one isolated game world with its own `World`, `GameService` and `StreamHub`.
 - `room_manager.py` — `RoomManager`: holds every room, guarantees a default room (`"world"`) from
   startup and can `create` more; the architecture is multi-room even while one room is in use.

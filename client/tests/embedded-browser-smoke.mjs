@@ -24,6 +24,23 @@ const waitFor = async predicate => {
     }
     throw new Error('Timed out waiting for session');
 };
+const checkAuthorizationLayout = async (page, name) => {
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), 'dark');
+
+    for (const [size, width, height] of [['desktop', 1440, 900], ['mobile', 390, 844], ['small', 320, 568], ['landscape', 844, 390]]) {
+        await page.setViewportSize({width, height});
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+
+        for (const control of await page.locator('input:not([type=hidden]), button').all()) {
+            assert.ok((await control.boundingBox()).height >= 44);
+        }
+
+        await page.screenshot({path: `/tmp/oauth-game-${name}-${size}.png`, fullPage: true});
+    }
+
+    await page.setViewportSize({width: 1024, height: 768});
+};
+
 const host = config => {
     const result = spawnSync(process.env.TEST_PYTHON,[process.env.TEST_HOST_SCRIPT],{input:JSON.stringify(config),encoding:'utf8'});
     assert.equal(result.status,0,result.stderr);
@@ -51,12 +68,22 @@ try {
     await oauthPage.mouse.click(512,465);
     await oauthPage.waitForTimeout(1500);
     await oauthPage.screenshot({path:'/tmp/oauth-after-select.png'});
+    await checkAuthorizationLayout(oauthPage, 'signin');
+    assert.equal(await oauthPage.locator('.hint').count(), 2);
+
+    for (const hint of await oauthPage.locator('.hint').all()) {
+        assert.equal(await hint.evaluate(element => getComputedStyle(element).fontSize), '12px');
+    }
+
     await oauthPage.locator('input[name=username]').fill('alice');
     await oauthPage.locator('input[name=password]').fill('strong-local-password');
     const loginResponse = oauthPage.waitForResponse(r => new URL(r.url()).pathname === '/oauth/login' && r.request().method() === 'POST');
     await oauthPage.getByRole('button',{name:'Create account'}).click();
     const logged = await loginResponse;
     assert.equal(logged.status(),303,'Login origin: '+logged.request().headers()['origin']);
+    await oauthPage.getByRole('button', {name: 'Allow', exact: true}).waitFor();
+    await checkAuthorizationLayout(oauthPage, 'consent');
+    assert.equal(await oauthPage.locator('details').evaluate(element => element.open), false);
     await oauthPage.getByRole('button',{name:'Allow',exact:true}).click();
     await oauthPage.waitForURL(base+'/?auth=oauth');
     await oauthPage.waitForTimeout(5000);
@@ -123,7 +150,7 @@ try {
     const stillToken = host({url:token.mcpUrl,token:token.mcpToken,name:null});
     assert.ok(JSON.stringify(stillToken.player).includes('TokenSmoke'));
     assert.equal(failures.length,0,failures.join('\n'));
-    console.log(JSON.stringify({embedded:true,openid:true,inspector:!!process.env.TEST_INSPECTOR_VERSION,registration:true,refresh:true,dual:true,token:tokenResult.login,oauth:oauthResult.login,tools:oauthResult.tools,tokenMoved:tokenResult.move,oauthMoved:oauthResult.move,codeReplayRejected:true,logoutRevoked:true,switchToToken:true,tokenUnaffected:true,browserErrors:failures.length}));
+    console.log(JSON.stringify({darkTheme:true,responsiveViewports:4,embedded:true,openid:true,inspector:!!process.env.TEST_INSPECTOR_VERSION,registration:true,refresh:true,dual:true,token:tokenResult.login,oauth:oauthResult.login,tools:oauthResult.tools,tokenMoved:tokenResult.move,oauthMoved:oauthResult.move,codeReplayRejected:true,logoutRevoked:true,switchToToken:true,tokenUnaffected:true,browserErrors:failures.length}));
 } finally {
     await browser.close();
 }
