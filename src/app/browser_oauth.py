@@ -12,7 +12,7 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 from app.browser_cookie import browser_cookie
 from app.browser_identity import BrowserIdentity
 from app.browser_session import BrowserSessionStore
-from mcpgtw.oauth.rate_limit import OAuthRateLimitPolicy
+from mcpgtw.oauth.rate_limit import OAuthRateLimitPolicy, WindowOAuthRateLimitPolicy
 from mcpgtw.oauth.verified_principal import VerifiedPrincipal
 
 if TYPE_CHECKING:
@@ -21,14 +21,33 @@ if TYPE_CHECKING:
 
 
 class BrowserOAuth:
+    rate_limit_class: type[OAuthRateLimitPolicy] = WindowOAuthRateLimitPolicy
+
     def __init__(
-        self, gateway: AppGateway, identity: BrowserIdentity, store: BrowserSessionStore
+        self,
+        gateway: AppGateway,
+        identity: BrowserIdentity,
+        store: BrowserSessionStore,
+        *,
+        rate_limit: OAuthRateLimitPolicy | None = None,
+        principal_limit: OAuthRateLimitPolicy | None = None,
     ) -> None:
         self.gateway = gateway
         self.identity = identity
         self.store = store
         self.settings = gateway.app_settings
-        self.rate_limit = OAuthRateLimitPolicy(30, 60)
+
+        def budget() -> OAuthRateLimitPolicy:
+            return self.rate_limit_class(
+                self.settings.oauth_browser_rate_limit_requests,
+                self.settings.oauth_browser_rate_limit_window_seconds,
+                self.settings.oauth_browser_rate_limit_maximum_keys,
+                gateway.settings.oauth_rate_limit_backoff_seconds,
+                gateway.settings.oauth_rate_limit_maximum_backoff_seconds,
+            )
+
+        self.rate_limit = rate_limit or budget()
+        self.principal_limit = principal_limit or budget()
         self._sockets: dict[str, set[WebSocket]] = {}
 
     def register_routes(self, app: FastAPI) -> None:
@@ -56,8 +75,7 @@ class BrowserOAuth:
         response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
 
     async def login(self, request: Request) -> Response:
-        if not self.rate_limit.admit(request.client.host if request.client else "unknown"):
-            return self._denied()
+        self.rate_limit.enforce(request.client.host if request.client else "unknown")
 
         verifier = secrets.token_urlsafe(48)
         nonce = secrets.token_urlsafe(32)
@@ -78,8 +96,7 @@ class BrowserOAuth:
         return response
 
     async def callback(self, request: Request) -> Response:
-        if not self.rate_limit.admit(request.client.host if request.client else "unknown"):
-            return self._denied()
+        self.rate_limit.enforce(request.client.host if request.client else "unknown")
 
         state = request.query_params.get("state", "")
         cookie = browser_cookie(request, "game_oauth_state")
@@ -87,7 +104,7 @@ class BrowserOAuth:
         if (
             not state
             or not cookie
-            or not secrets.compare_digest(state, cookie)
+            or not secrets.compare_digest(state.encode(), cookie.encode())
             or any(
                 len(request.query_params.getlist(name)) != 1 for name in ("state", "code", "iss")
             )
@@ -108,6 +125,12 @@ class BrowserOAuth:
             if issuer != self.settings.oidc_issuer:
                 return self._denied()
 
+        except Exception:
+            return self._denied()
+
+        self.principal_limit.enforce(self._principal(issuer, subject))
+
+        try:
             old = await self.store.consume(
                 "session", browser_cookie(request, self.settings.session_cookie_name)
             )
@@ -143,8 +166,7 @@ class BrowserOAuth:
         return response
 
     async def _browser(self, request: Request) -> dict | None:
-        if not self.rate_limit.admit(request.client.host if request.client else "unknown"):
-            return None
+        self.rate_limit.enforce(request.client.host if request.client else "unknown")
 
         if request.headers.get("origin") not in self.settings.allowed_browser_origins:
             return None
@@ -155,7 +177,12 @@ class BrowserOAuth:
         if browser is None or self.gateway.registry.get(browser["channel"]) is None:
             return None
 
+        self.principal_limit.enforce(self._principal(browser["issuer"], browser["subject"]))
         return browser
+
+    @staticmethod
+    def _principal(issuer: str, subject: str) -> str:
+        return hashlib.sha256((issuer + "\0" + subject).encode()).hexdigest()
 
     async def consent(self, request: Request) -> Response:
         browser = await self._browser(request)
@@ -173,6 +200,7 @@ class BrowserOAuth:
             )
             await self.gateway.channel_grants.grant(principal, browser["channel"])
 
+        self.gateway._sessions[browser["channel"]].oauth_authorized_until = browser["expires_at"]
         browser["consented"] = True
         await self.store.update(
             "session", browser_cookie(request, self.settings.session_cookie_name), browser
@@ -249,4 +277,7 @@ class BrowserOAuth:
         await self._revoke(browser["channel"])
         response = JSONResponse({"loggedOut": True})
         self._cookie(response, self.settings.session_cookie_name, "", 0)
+        response.delete_cookie(
+            "oauth_login", path="/oauth", secure=True, httponly=True, samesite="lax"
+        )
         return response

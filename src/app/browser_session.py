@@ -6,6 +6,7 @@ import json
 import secrets
 import sqlite3
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,7 @@ class BrowserSessionStore:
         key = self._digest(secret)
         Path(self.path).touch(mode=0o600, exist_ok=True)
 
-        with sqlite3.connect(self.path, timeout=5) as db:
+        with closing(sqlite3.connect(self.path, timeout=5)) as db, db:
             db.execute(
                 "CREATE TABLE IF NOT EXISTS browser_records (kind TEXT, key TEXT, "
                 "payload TEXT, expires REAL, PRIMARY KEY(kind, key))"

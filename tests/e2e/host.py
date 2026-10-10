@@ -3,6 +3,7 @@ import json
 import sys
 
 import httpx2
+from gameplay import move_player
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
@@ -29,15 +30,14 @@ async def main():
         assert not login.is_error, login
         player = await session.call_tool("get_player", {})
         assert not player.is_error, player
-        await asyncio.sleep(0.8)
-        move = await session.call_tool("move", {"direction": "south"})
+        moved = await move_player(session)
         print(
             json.dumps(
                 {
                     "tools": len(listed.tools),
                     "login": not login.is_error,
                     "player": player.structured_content,
-                    "move": not move.is_error,
+                    "move": moved,
                 }
             )
         )

@@ -260,6 +260,9 @@ async def test_game05_login_state_callback_and_idp_failures(gateway):
             await client.get("/app/oauth/callback", params=params | {"state": "tampered"})
         ).status_code == 403
         assert (
+            await client.get("/app/oauth/callback", params=params | {"state": "é"})
+        ).status_code == 403
+        assert (
             await client.get("/app/oauth/callback", params=params | {"iss": "https://other"})
         ).status_code == 403
         assert (
@@ -331,10 +334,10 @@ async def test_browser_store_expiry_capacity_restart_and_atomic_consume(tmp_path
         {"oidc_client_id": ""},
         {"oauth_database_path": ":memory:"},
         {"oidc_client_secret": ""},
-        {"oauth_mcp_client_ids": []},
         {"allowed_browser_origins": []},
         {"public_base_url": BASE + "/"},
         {"session_cookie_name": "bad name"},
+        {"session_cookie_name": "sessão"},
         {"websocket_ticket_ttl_seconds": 0},
         {"session_idle_seconds": float("inf")},
     ],
@@ -601,15 +604,21 @@ async def test_oauth_only_rejects_legacy_socket_and_channel_revoke_branches(tmp_
 
 
 async def test_game16_browser_endpoint_budgets(gateway):
-    from mcpgtw.oauth.rate_limit import OAuthRateLimitPolicy
+    from mcpgtw.oauth.rate_limit import WindowOAuthRateLimitPolicy
 
-    gateway.browser_oauth.rate_limit = OAuthRateLimitPolicy(1)
+    gateway.browser_oauth.rate_limit = WindowOAuthRateLimitPolicy(1)
 
     async with client_for(gateway) as client:
         assert (await client.get("/app/oauth/login")).status_code == 307
-        assert (await client.get("/app/oauth/login")).status_code == 403
-        assert (await client.post("/app/oauth/consent")).status_code == 403
-        assert (await client.get("/app/oauth/callback")).status_code == 403
+        for method, path in [
+            ("GET", "/app/oauth/login"),
+            ("POST", "/app/oauth/consent"),
+            ("GET", "/app/oauth/callback"),
+        ]:
+            response = await client.request(method, path)
+            assert response.status_code == 429
+            assert int(response.headers["retry-after"]) >= 1
+            assert response.headers["cache-control"] == "no-store"
 
 
 async def test_owned_browser_http_client_closes_on_shutdown(tmp_path):
@@ -669,6 +678,89 @@ def test_invalid_configuration_does_not_render_browser_secret(tmp_path):
     secret = "do-not-render-browser-credential"
 
     with pytest.raises(ValidationError) as error:
-        app_settings(tmp_path, oidc_client_secret=secret, oauth_mcp_client_ids=[])
+        app_settings(tmp_path, oidc_client_secret=secret, oauth_database_path="")
 
     assert secret not in str(error.value)
+
+
+def test_external_oauth_requires_approved_clients(tmp_path):
+    with pytest.raises(GatewayConfigurationError, match="approved MCP"):
+        AppGateway(
+            app_settings(tmp_path, oauth_mcp_client_ids=[]), gateway_settings=gateway_settings()
+        )
+
+
+async def test_game16_verified_account_budget_survives_address_rotation(gateway):
+    from mcpgtw.oauth.rate_limit import WindowOAuthRateLimitPolicy
+
+    async with client_for(gateway) as client:
+        await login(client)
+        gateway.browser_oauth.principal_limit = WindowOAuthRateLimitPolicy(1, 60)
+        assert (await client.post("/app/oauth/consent")).status_code == 200
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(gateway.create_app(), client=("203.0.113.20", 123)),
+            base_url=BASE,
+            cookies=client.cookies,
+            headers={"Origin": BASE},
+        ) as other:
+            response = await other.post("/app/oauth/ticket")
+
+        assert response.status_code == 429
+        assert int(response.headers["retry-after"]) >= 1
+        assert (await gateway._acquire_session(TOKEN)).auth_method == "token"
+
+
+async def test_browser_budget_class_and_instance_injection(gateway):
+    from app.browser_oauth import BrowserOAuth
+    from mcpgtw.oauth.rate_limit import WindowOAuthRateLimitPolicy
+
+    class CustomPolicy(WindowOAuthRateLimitPolicy):
+        pass
+
+    class CustomBrowser(BrowserOAuth):
+        rate_limit_class = CustomPolicy
+
+    browser = gateway.browser_oauth
+    custom = CustomBrowser(gateway, browser.identity, browser.store)
+    assert isinstance(custom.rate_limit, CustomPolicy)
+    assert isinstance(custom.principal_limit, CustomPolicy)
+    injected = WindowOAuthRateLimitPolicy(3, 4, 5)
+    custom = BrowserOAuth(
+        gateway, browser.identity, browser.store, rate_limit=injected, principal_limit=injected
+    )
+    assert custom.rate_limit is injected and custom.principal_limit is injected
+
+
+async def test_game10_same_account_clients_keep_distinct_granted_scopes(gateway):
+    from dataclasses import replace
+
+    async with client_for(gateway) as client:
+        await login(client)
+        await client.post("/app/oauth/consent")
+        channel = next(iter(gateway._sessions))
+        reader = verified("alice")
+        writer = replace(reader, client_id="writer", scopes=reader.scopes | {"game:write"})
+        await gateway.channel_grants.grant(writer, channel)
+        assert await gateway.channel_grants.channels(reader) == frozenset({channel})
+        assert await gateway.channel_grants.channels(writer) == frozenset({channel})
+        assert not await gateway.channel_grants.channels(replace(reader, scopes=writer.scopes))
+        assert not await gateway.channel_grants.channels(replace(writer, subject="bob"))
+        await gateway.channel_grants.revoke(writer, channel)
+        assert not await gateway.channel_grants.channels(writer)
+        assert await gateway.channel_grants.channels(reader) == frozenset({channel})
+        assert (await client.post("/app/oauth/logout")).status_code == 200
+        assert not await gateway.channel_grants.channels(reader)
+
+
+async def test_game05_storage_failure_after_verified_callback_does_not_create_owner(gateway):
+    async with client_for(gateway) as client:
+        response = await client.get("/app/oauth/login")
+        state = parse_qs(urlsplit(response.headers["location"]).query)["state"][0]
+        gateway.acquire_oauth_session = AsyncMock(side_effect=ValueError("capacity exceeded"))
+        response = await client.get(
+            "/app/oauth/callback", params={"state": state, "code": "alice", "iss": ISSUER}
+        )
+        assert response.status_code == 403
+        assert not gateway._oauth_owners
+        assert not gateway._sessions
+        assert "game_session" not in client.cookies

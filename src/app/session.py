@@ -14,6 +14,7 @@ class Session:
     mcp_token: str
     room: Room
     auth_method: str = "token"
+    oauth_authorized_until: int = 0
     logged_in: asyncio.Event = field(default_factory=asyncio.Event)
     player_id: str | None = None
     connections: int = 0
