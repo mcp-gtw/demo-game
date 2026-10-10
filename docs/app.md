@@ -125,3 +125,10 @@ Gateway settings use the `GATEWAY_` prefix. App settings use `APP_` — `APP_TIC
 ## Token and OAuth
 
 Token is the default. Dual mode offers Token and OAuth in the same game. OAuth can use the embedded authorization server on the game domain or a configured external identity provider. See [authentication and deployment](oauth.md).
+
+
+The game root exposes `aria-busy="true"` while Phaser loads and decodes its assets. `BootScene.create`
+clears it once loading completes, before showing the menu, gallery or load-error screen. Browser
+integration waits for this lifecycle signal and rendered frames before clicking canvas controls.
+Network-idle alone cannot establish readiness because audio decoding continues after HTTP requests
+finish. No test-only game/store globals or privileged browser endpoints are exposed.

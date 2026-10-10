@@ -123,7 +123,7 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   the landing and the later `login`/`catalog`/`map` transition it. If a reconnect **after the grace**
   adopts a fresh player (a new id while already in game), `onLogin` updates `store.playerId` and
   restarts the game + HUD scenes so the camera and HUD re-bind to the new character.
-- `src/scenes/BootScene.js` — shows the `LoadingWindow` and loads **every static asset once** (all
+- `src/scenes/BootScene.js` — marks the game root busy during loading, clears it at loader completion, shows the `LoadingWindow` and loads **every static asset once** (all
   texture manifests, the per-unit spritesheets from the `UNITS` catalog — one set per faction colour for
   the coloured classes, via `unitBases` — the tree/foam sheets and the music) so no scene reloads a
   shared key, then routes: gallery when requested, straight into the game if login already resumed

@@ -67,6 +67,8 @@ export class BootScene extends Phaser.Scene {
     }
 
     create() {
+        document.getElementById("game").setAttribute("aria-busy", "false");
+
         if (this.assetsFailed) {
             this.loading.showReload();
             return;

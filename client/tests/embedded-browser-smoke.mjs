@@ -56,13 +56,15 @@ const waitFor = async predicate => {
     }
     throw new Error('Timed out waiting for session: '+JSON.stringify({browserRequests,failures}));
 };
+let menuCaptures = 0;
 const gameReady = async page => {
     await page.waitForLoadState('networkidle');
-    await page.locator('canvas').waitFor({state:'visible'});
+    await page.locator('#game[aria-busy=false] canvas').waitFor({state:'visible'});
     await page.evaluate(async () => {
         await document.fonts.ready;
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     });
+    await page.screenshot({path:`/tmp/oauth-game-menu-${++menuCaptures}-connect.png`});
 };
 const checkAuthorizationLayout = async (page, name) => {
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), 'dark');
