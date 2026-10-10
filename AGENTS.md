@@ -24,16 +24,16 @@ It requires `mcp-gtw>=0.0.10`, resolved from PyPI by the lockfile. Development, 
   acceptance workflow checks out all three full SHAs and runs Chrome/Inspector/Docker tests.
   See [docs/oauth.md](docs/oauth.md) and [tests/e2e/README.md](tests/e2e/README.md).
 
-## Architecture (per-browser session, MCP-only login, camera follows your player)
+## Architecture (game sessions, MCP-only player login, camera follows your player)
 
 The gateway is a relay. An embedded MCP client can establish its account channel before browser
-login. Each browser opens **one session websocket** (`/app/stream`) that gives it a
-**private per-session channel** with an in-process provider (`provider.py`). The agent connects to
-that channel's MCP endpoint and calls `login`, the provider **adopts** the resulting player for the
-session, and the same websocket then streams the world. Everything after login is via MCP.
+login. Each Token identity or OAuth account owns a private game session with an in-process
+provider (`provider.py`). Browser tabs open session WebSockets (`/app/stream`) for that identity.
+The agent connects to the session's MCP endpoint and calls `login`, and the provider adopts its
+player. Browser streams follow the same player. Everything after player login is via MCP.
 
 The MCP `login` tool creates the playable character exactly once per session. OAuth account sign-in
-is a separate browser flow and never creates a player. Positions are always **grid cells (1, 2, 3…)**
+is a separate authorization flow and never creates a player. Positions are always **grid cells (1, 2, 3…)**
 on the server (pixels exist only in the browser, `tile_size` is a render hint).
 
 Token flow: browser opens the socket with its stored token → server derives the stable channel and sends the
