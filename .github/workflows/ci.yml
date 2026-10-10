@@ -38,3 +38,10 @@ jobs:
       - name: Embedded OAuth browser gate
         if: matrix.python-version == '3.12'
         run: make embedded-smoke
+      - name: Failed menu diagnostics
+        if: failure() && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: oauth-game-menu
+          path: /tmp/oauth-game-menu-*-connect.png
+          retention-days: 1

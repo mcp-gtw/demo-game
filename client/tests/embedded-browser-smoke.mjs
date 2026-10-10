@@ -186,7 +186,14 @@ try {
     await oauthPage.getByRole('button',{name:'Allow',exact:true}).click();
     await oauthPage.waitForURL(base+'/?auth=oauth');
     await gameReady(oauthPage);
+    await oauthPage.screenshot({path:'/tmp/oauth-game-menu-before-connect.png'});
     await oauthPage.mouse.click(512,440);
+    await oauthPage.screenshot({path:'/tmp/oauth-game-menu-after-connect.png'});
+    const canvasLayout = await oauthPage.evaluate(() => ({
+        width:innerWidth,height:innerHeight,dpr:devicePixelRatio,visibility:document.visibilityState,
+        canvas:document.querySelector('canvas').getBoundingClientRect().toJSON(),
+    }));
+    console.log(JSON.stringify({canvasLayout}));
     await waitFor(()=>oauthSessions.length);
     const oauth = oauthSessions[0];
     assert.equal(oauth.authMethod,'oauth');
