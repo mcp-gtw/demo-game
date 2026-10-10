@@ -265,6 +265,7 @@ try {
     const denied = await context.request.post(base+'/mcp',{headers:{Authorization:'Bearer '+credentials.access_token},data:{jsonrpc:'2.0',id:1,method:'tools/list'}});
     assert.equal(denied.status(),401);
     const beforeSwitch = oauthSessions.length;
+    await gameReady(oauthPage);
     await oauthPage.mouse.click(512,384);
     await waitFor(()=>oauthSessions.length > beforeSwitch);
     const switched = oauthSessions.at(-1);
