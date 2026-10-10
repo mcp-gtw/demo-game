@@ -156,6 +156,7 @@ const auth = new AuthController({ store, reset: resetAuth,
     createToken: () => new GameSocket(baseUrl, handlers),
     createOAuth: () => new OAuthGameSocket(baseUrl, handlers),
 });
+handlers.onAuthRequired = () => auth.expire();
 store.selectAuthMethod = (method) => auth.select(method).catch(() => { store.status = "offline"; });
 store.switchAuth = () => auth.switchMethod().catch(() => { store.status = "offline"; });
 store.requestStats = () => auth.requestStats();
@@ -185,6 +186,12 @@ async function boot() {
     if (store.availableAuthMethods.length === 1 && store.availableAuthMethods[0] === "token") {
         initializeAnalytics();
         store.selectAuthMethod("token");
+    } else {
+        const url = new URL(location.href);
+        const callback = url.searchParams.get("auth") === "oauth";
+        url.searchParams.delete("auth");
+        history.replaceState(null, "", url);
+        await auth.restore(callback).catch(() => { store.status = "offline"; });
     }
 }
 

@@ -48,7 +48,7 @@ Choosing OAuth is explicit consent for the configured `APP_OAUTH_MCP_CLIENT_IDS`
 
 OAuth connect options contain the MCP endpoint, a Claude command without an Authorization header, MCP JSON without a bearer token, and Tools. The MCP host completes its own OAuth login/consent at the IdP. Static Token keeps its original command, JSON, endpoint/token and Tools buttons.
 
-**Switch / Sign out** closes the previous socket, invalidates pending reconnections, clears player/map/session caches, and signs out/revokes an OAuth channel. Logout and changing accounts revoke grants and close live OAuth streams without affecting Token users. Multiple tabs for the same account intentionally share one active OAuth channel. Browser session expiry is fixed; activity does not renew the cookie automatically. Game frames recheck the session and stop after expiry or revocation. A reconnect during the configured grace interval retains the account channel; after teardown or restart a new random generation is created and must be consented again.
+**Switch / Sign out** closes the previous socket, invalidates pending reconnections, clears player/map/session caches, and signs out/revokes an OAuth channel. Logout and changing accounts revoke grants and close live OAuth streams without affecting Token users. Multiple tabs for the same account intentionally share one active OAuth channel. Reloading restores that tab's selected method. Reopening the game restores the last chosen method, using the same Token UUID or a valid consented OAuth cookie. Successful callback navigation connects automatically. Same-account reauthentication preserves a valid cookie and other tabs' streams. Browser session expiry is fixed and activity does not renew the cookie automatically. Expired OAuth restoration returns to the method menu without redirect loops or changing to Token. Game frames recheck the session and stop after expiry or revocation. The game retains a character while its MCP client remains active, including after every browser tab closes. After genuine idle teardown or a server restart, the process-local character no longer exists and a new game login is required.
 
 SQLite is a single-host persistence adapter. Owned HTTP clients close on shutdown. Game state, channel ownership and MCP session bindings remain process-local; multiple replicas require a coordinated routing/state design. Login and authenticated BFF actions use bounded IP and verified-account budgets. APP_OAUTH_BROWSER_RATE_LIMIT_REQUESTS (30), APP_OAUTH_BROWSER_RATE_LIMIT_WINDOW_SECONDS (60) and APP_OAUTH_BROWSER_RATE_LIMIT_MAXIMUM_KEYS (10000) configure each budget. They use the gateway progressive backoff settings and return HTTP 429 with Retry-After. Replace AppGateway.browser_oauth_class or inject BrowserOAuth(rate_limit=..., principal_limit=...) to use another limiter. Proxy client-address trust must be explicitly configured. OAuth/dual HTML allows only self-hosted scripts, limits WebSocket connections to the configured origin, blocks framing/objects, and suppresses Referer headers. Inline style is allowed for the Phaser canvas/UI. The supplied nginx file redacts query logs and proxies static assets from the packaged application.
 
@@ -56,7 +56,7 @@ SQLite is a single-host persistence adapter. Owned HTTP clients close on shutdow
 
 `make oauth-smoke` builds the frontend and runs a loopback-only test IdP, HTTPS game, Chrome and the official Python MCP client. It exercises simultaneous Token/OAuth login, tool calls, one-use authorization code and logout revocation, and writes screenshots to `/tmp`. Its IdP is test-only and must never be deployed. See `tests/e2e/README.md` for requirements.
 
-Unit/ASGI tests cover hostile tokens, callback/state/origin checks, one-use ticket races, account changes, grace reconnects, credential separation, dual modes and actual LoginScene rendering with Phaser fakes. Actual ChatGPT/Claude workspace action import after the corrected deployment remains pending; local tests exercise the actual embedded server as well as the external-IdP path.
+Unit/ASGI tests cover hostile tokens, callback/state/origin checks, one-use ticket races, account changes, grace reconnects, credential separation, dual modes and actual LoginScene rendering with Phaser fakes. ChatGPT gameplay with gateway 0.0.12 was confirmed in production by the project owner. Actual Claude workspace acceptance remains pending; local tests exercise the actual embedded server as well as the external-IdP path.
 
 ## Embedded login on the game domain
 
@@ -111,8 +111,12 @@ A newly acquired OAuth channel without a browser stream gets a finite idle teard
 `APP_SESSION_IDLE_SECONDS`. Explicit host consent sets the grant deadline to that interval and
 reschedules idle teardown. Code exchange and refresh never extend it. Repeated ownership lookup
 alone does not cancel cleanup. A successfully accepted browser stream cancels the idle timer,
-while its last disconnect schedules the shorter `APP_SESSION_GRACE_SECONDS` teardown. The teardown
-checks ownership and live connection count under the session lock before reclaiming a channel.
+while its last disconnect schedules cleanup after the larger of `APP_SESSION_GRACE_SECONDS` and
+the remaining MCP idle interval. Each successful provider tool execution records monotonic activity.
+The cleanup task checks the last activity again and waits until `APP_SESSION_IDLE_SECONDS` have
+elapsed without a successful MCP tool call. Invalid tool calls do not extend this interval. Browser
+connections retain the channel independently. The teardown checks ownership and live connection
+count under the session lock before reclaiming a channel.
 Removal revokes its grants, embedded login/code/token families and player. Browser session and
 grant expiry are still enforced on active streams and MCP requests. Explicit fresh consent can
 renew permissions, but refresh cannot recover expired or revoked access.
@@ -128,15 +132,14 @@ refresh, replay rejection, logout and Token coexistence. Both servers use epheme
 and no code or credential is sent to ChatGPT or another remote client.
 
 The Python 3.12 CI leg installs Chromium and runs this smoke on every PR. All supported Python
-versions still run the full unit and coverage gates. Actual authenticated ChatGPT/Claude workspace
-acceptance and production deployment remain separate checks.
+versions still run the full unit and coverage gates. Actual authenticated workspace acceptance and production deployment remain separate checks.
 
 
 OAuth and dual game pages retain a self-only script CSP and load no Google Analytics tag. The
 Token-only deployment retains its existing Analytics measurement through a bundled bootstrap.
 Analytics page URLs exclude queries and fragments. Authorization pages remain script-free. The
 browser gate checks that OAuth game pages issue no Analytics requests, alongside zero unexpected
-console errors. Two unauthenticated BFF consent probes must return HTTP 403 and start sign-in.
+console errors. Unauthenticated BFF consent probes must return HTTP 403 and start sign-in.
 Those expected HTTP denials are checked explicitly and do not hide unrelated errors or CSP failures.
 
 ## Modern MCP action discovery
@@ -151,3 +154,35 @@ and per-request envelopes. They list all ten tools and execute login/get_player/
 position changes. The Docker/nginx host-first check uses the same modern flow, while its
 browser-first and static checks also exercise initialization. These checks do not prove that an
 individual ChatGPT workspace has refreshed its saved tool catalog after deployment.
+
+
+## Session resumption acceptance
+
+The browser remembers only the method name in localStorage and sessionStorage. The latter keeps
+Token and OAuth tabs independent on reload. The Token UUID retains its existing storage key.
+OAuth credentials and cookies are never copied into either storage area.
+
+`POST /app/oauth/session` is a read-only BFF check before automatic restoration. It requires the
+allowed Origin, an unexpired cookie, explicit existing browser consent and a live owned channel.
+It returns only `{ "authorized": true }` with `Cache-Control: no-store`, never tokens or account
+identifiers. It does not write grants, extend a cookie deadline or recreate a channel. Re-selecting OAuth with
+an already consented cookie is idempotent and cannot restore revoked MCP client grants. Ticket
+HTTP 401/403 for the current connection ends reconnection and returns to the authentication menu.
+Responses from stopped or superseded connections cannot clear a newer selected identity. Temporary server errors, network failures
+and rate limits leave the method menu available for retry without redirecting into another login flow.
+
+| Scenario | Required behavior and verification |
+| --- | --- |
+| Reload a Token tab with an existing character | Reuse the stored UUID, endpoint, channel and player, and receive login/catalog/map/snapshots without a second MCP login. |
+| Reload an OAuth tab | Check the existing cookie, get a fresh one-use ticket and follow the same account's player automatically. |
+| Open two tabs with the same identity | Both follow one player. Closing either leaves the other stream and MCP commands working. |
+| Keep Token and OAuth tabs open together | Each tab reloads its own method and private identity, without mixing credentials or characters. |
+| Close every tab and reopen after the short grace | Successful MCP calls keep the character alive for the configured idle interval. Reopening follows that character. |
+| Sign in again with the same account | A valid shared cookie is preserved, with its original expiry. Existing tabs remain authorized. A separate browser profile signs into the same owned channel and character. |
+| Revoke, expire or change the OAuth account | Missing, expired, foreign-Origin or unconsented browser sessions cannot resume. Logout revokes all streams and MCP grants for that account. Other accounts and Token identities remain isolated. |
+| Stop all browser and MCP activity | Cleanup removes the character and grants after the configured idle interval. Token can create a new session with the same UUID. OAuth requires fresh account authorization and a new channel generation. |
+
+These scenarios are covered by unit/ASGI and actual Chrome tests. The embedded browser gate uses
+a one-second browser grace and verifies reopening after that grace with live MCP commands. It
+checks the same player ID, real movement, multiple browser profiles and zero unexpected browser
+errors. Character/world persistence across server restarts is outside this process-local model.

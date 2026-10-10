@@ -375,3 +375,50 @@ async def test_simulation_survives_a_failing_tick():
 
     assert calls["n"] > 0
     await drain()
+
+
+async def test_active_mcp_retains_character_without_browser_and_idle_still_reclaims_it():
+    gateway = AppGateway(
+        app_settings=AppSettings(session_grace_seconds=0.01, session_idle_seconds=0.08)
+    )
+    session = await gateway._acquire_session(TOKEN)
+    channel = gateway.registry.get(session.channel_id)
+    await channel.execute_tool(name="login", arguments={"name": "active"})
+    player_id = session.player_id
+    gateway._session_connect(session)
+    gateway._session_connect(session)
+    gateway._session_disconnect(session)
+    assert session.teardown is None
+    gateway._session_disconnect(session)
+    await asyncio.sleep(0.025)
+    assert gateway._sessions[session.channel_id] is session
+    await channel.execute_tool(name="get_player", arguments={})
+    await asyncio.sleep(0.06)
+    assert gateway._sessions[session.channel_id] is session
+    assert session.player_id == player_id
+    resumed = await gateway._acquire_session(TOKEN)
+    assert resumed is session
+    gateway._session_connect(resumed)
+    first = FakeWebSocket()
+    second = FakeWebSocket()
+    await gateway._start_game(first, session)
+    await gateway._start_game(second, session)
+    assert first.sent[0]["player"]["id"] == second.sent[0]["player"]["id"] == player_id
+    gateway._session_disconnect(session)
+    await session.teardown
+    assert gateway.registry.get(session.channel_id) is None
+    assert player_id not in session.room.world.players
+    fresh = await gateway._acquire_session(TOKEN)
+    assert fresh.mcp_token == session.mcp_token
+    assert fresh.player_id is None
+    await drain()
+
+
+async def test_rejected_tool_calls_do_not_extend_session_idle_deadline():
+    gateway = build_gateway()
+    session = await gateway._acquire_session(TOKEN)
+    channel = gateway.registry.get(session.channel_id)
+    rejected = await channel.execute_tool(name="get_player", arguments={})
+    assert rejected.is_error
+    assert session.last_mcp_activity is None
+    await drain()

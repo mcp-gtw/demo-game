@@ -15,7 +15,8 @@ It requires `mcp-gtw>=0.0.12`, resolved from PyPI by the lockfile. Development, 
 
 ## Documentation map
 
-- **OAuth** — public endpoint before login, client-first embedded authorization, responsive dark pages and finite login deadlines: [docs/oauth.md](docs/oauth.md).
+- **OAuth** — public endpoint before login, client-first authorization, dark pages and finite login deadlines: [docs/oauth.md](docs/oauth.md).
+- **Session resumption** — tab-specific method restoration, same-account cookie reuse and finite MCP activity retention: [acceptance scenarios](docs/oauth.md#session-resumption-acceptance).
 - **Modern MCP discovery** — the browser and proxy gates exercise per-request discovery and actual tool execution with the published gateway: [docs/oauth.md](docs/oauth.md#modern-mcp-action-discovery).
 - **OAuth budgets and scoped grants** — BFF limits are configurable by IP and verified account,
   and grants retain explicit client scopes. Extension points and invariants: [docs/oauth.md](docs/oauth.md).
@@ -41,8 +42,8 @@ on the server (pixels exist only in the browser, `tile_size` is a render hint).
 Token flow: browser opens the socket with its stored token → server derives the stable channel and sends the
 MCP url + token → agent connects and calls `login` → provider adopts the player, socket sends `login` +
 catalog + map + snapshots → the page drops into the game following **only** that player (fixed zoom, no
-picker, no zoom, no drag). Closing the browser tears the session down after a short grace, removing the
-player (a reload within the grace keeps the same character; the token stays valid regardless). The
+picker, no zoom, no drag). Browser streams and successful MCP tool calls retain that identity's
+character according to the finite lifecycle in [docs/oauth.md](docs/oauth.md#public-endpoint-and-host-only-lifetime). The
 stats panel is fed by `{type: "me"}` over the same socket.
 
 OAuth uses an account-owned random channel and one-use cookie-bound socket tickets. Token and OAuth
@@ -121,7 +122,7 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   during asset load without racing the game in before the assets exist. `BootScene` calls back
   `onBoot` when loading finishes: if login already resumed during boot it drops **straight into the
   game** (a reload that resumes an in-game session never gets stuck on the landing), otherwise it shows
-  the landing and the later `login`/`catalog`/`map` transition it. If a reconnect **after the grace**
+  the landing and the later `login`/`catalog`/`map` transition it. If a reconnect **after idle cleanup**
   adopts a fresh player (a new id while already in game), `onLogin` updates `store.playerId` and
   restarts the game + HUD scenes so the camera and HUD re-bind to the new character.
 - `src/scenes/BootScene.js` — marks the game root busy during loading, clears it at loader completion, shows the `LoadingWindow` and loads **every static asset once** (all
@@ -233,7 +234,7 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   black — defaults to `blue`, resolved by `get_color`), the player's faction skin; enemies always render
   red. An unknown class or color is a friendly `CommandError`. Success spawns the player and the
   session adopts it. Each session may log in once (a second login is rejected). There is no logout tool —
-  leaving is by disconnecting. The chosen class and color ride `get_player` and the render snapshot
+  leaving follows the configured inactivity lifecycle or explicit OAuth sign-out. The chosen class and color ride `get_player` and the render snapshot
   (`sprite` + `color`), so the browser draws the right unit in the right colour.
 - **Persistent identity (client-supplied token)** — `gateway.py`. The browser mints a `crypto.randomUUID`
   once, stores it in `localStorage` (`mcp-game-token`) and connects `/app/stream` with `?token=<uuid>`.
@@ -248,13 +249,9 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
   (`gateway.py`): the MCP transport keeps no in-memory session id, so a client's stored url+token keep
   working after the server restarts (once the page reopens to recreate the channel) with no MCP
   reconnect — a stateful transport would 404 the agent's cached session id and force a reconfigure.
-- **Presence** — `gateway.py`. A player and its channel linger for `session_grace_seconds` (30s) after
-  the browser disconnects, so a reload keeps the same character, then are reclaimed. The token stays
-  valid regardless of the grace (the channel is recreated deterministically on the next connect).
-  `_teardown_after_grace` takes the `_session_lock` for its reclaim (owner-guard + pop + channel/player
-  removal) and `_acquire_session` cancels a pending teardown under the same lock, so a reconnect at the
-  grace boundary can never reuse a session whose channel is being reclaimed.
-- **Identity — the session, no player token** — the only credential is the browser's stored UUID (the
+- **Presence** — finite browser/MCP activity retention and cleanup under the session lock:
+  [docs/oauth.md](docs/oauth.md#public-endpoint-and-host-only-lifetime).
+- **Token identity — the session, no player token** — its credential is the browser's stored UUID (the
   client-supplied token above). It derives the channel, the channel binds one `LocalProvider`/`Session`,
   and `login` **adopts** the player into that session (`session.player_id`). Every other tool is answered
   against `session.player_id` (`provider.py` → `tools.py::dispatch` → `game.py::_player`), so **no tool
@@ -480,7 +477,7 @@ make build      # build client, then wheel/sdist including the required browser 
   open `/admin?key=...`. Each browser session appears there as a connected provider.
 - A Token channel's `channel_id` and `mcp_token` are derived from the browser's stored token, so they are
   stable across reloads and server restarts (the channel is recreated on demand). A channel is only
-  reclaimed after the grace with the browser gone.
+  reclaimed when the browser is gone and the configured MCP activity idle interval has elapsed.
 - Wheel/sdist force-include the built client, and missing dist fails packaging. Use `make build`.
   Artifact verification and runtime checks: [tests/e2e/README.md](tests/e2e/README.md).
 - The client is built (Vite): edit `client/src`, run `make client` (or `make run`, which builds first).

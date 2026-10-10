@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 
 from app.room import Room
@@ -18,7 +19,11 @@ class Session:
     logged_in: asyncio.Event = field(default_factory=asyncio.Event)
     player_id: str | None = None
     connections: int = 0
+    last_mcp_activity: float | None = None
     teardown: asyncio.Task[None] | None = None
+
+    def touch(self) -> None:
+        self.last_mcp_activity = time.monotonic()
 
     def adopt(self, player_id: str) -> None:
         self.player_id = player_id

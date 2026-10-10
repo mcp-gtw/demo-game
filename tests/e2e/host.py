@@ -24,7 +24,8 @@ async def main():
         if config.get("name") is None:
             player = await session.call_tool("get_player", {})
             assert not player.is_error
-            print(json.dumps({"player": player.structured_content}))
+            moved = await move_player(session) if config.get("move") else None
+            print(json.dumps({"player": player.structured_content, "move": moved}))
             return
 
         login = await session.call_tool(

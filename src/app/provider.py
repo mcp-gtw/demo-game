@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class LocalProvider:
-    """An in-process provider bound to one browser session.
+    """An in-process provider bound to one game identity.
 
     It answers the game tools directly against the world and, when the agent logs in, adopts the
     resulting player for its session so the browser can follow it. Each session may log in once.
@@ -47,6 +47,7 @@ class LocalProvider:
 
         try:
             result = self._run(params.get("name"), params.get("arguments") or {})
+            self.session.touch()
             self.channel.handle_result(
                 {"type": protocol.RESULT, "requestId": request_id, "result": result}
             )
