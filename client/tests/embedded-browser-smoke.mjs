@@ -5,12 +5,37 @@ import { chromium } from 'playwright';
 
 const base = 'https://localhost:19443';
 const issuer = process.env.TEST_ISSUER;
+const callbackOrigin = 'https://127.0.0.1:19470';
+const redirect = callbackOrigin + '/connector_platform_oauth_redirect';
 const browser = await chromium.launch({...(process.env.TEST_CHROME ? {executablePath:process.env.TEST_CHROME} : {}), headless:true, args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const context = await browser.newContext({ignoreHTTPSErrors:true, viewport:{width:1024,height:768}, permissions:["clipboard-read","clipboard-write"]});
 const failures = [];
+const unauthenticatedConsent = [];
+const unauthenticatedResponses = [];
+const analyticsRequests = [];
+const watchAnalytics = context => context.route('https://www.googletagmanager.com/**', async route => {
+    analyticsRequests.push(route.request().url());
+    await route.fulfill({contentType:'application/javascript',body:''});
+});
+await watchAnalytics(context);
 const capture = page => {
     const sessions = [];
     page.on('pageerror', error => failures.push(error.message));
+    page.on('console', message => {
+        if (message.type() !== 'error') return;
+
+        if (message.location().url === base + '/app/oauth/consent' && message.text().includes('403')) {
+            unauthenticatedConsent.push(message.text());
+            return;
+        }
+
+        failures.push(message.text());
+    });
+    page.on('response', response => {
+        if (response.url() === base + '/app/oauth/consent' && response.request().method() === 'POST' && response.status() === 403) {
+            unauthenticatedResponses.push(response.status());
+        }
+    });
     page.on('websocket', ws => ws.on('framereceived', ({payload}) => {
         const frame = JSON.parse(payload.toString());
         if(frame.type === 'session') sessions.push(frame);
@@ -48,6 +73,7 @@ const host = config => {
 };
 try {
     const hostContext = await browser.newContext({ignoreHTTPSErrors:true, viewport:{width:1024,height:768}});
+    await watchAnalytics(hostContext);
     const hostFirstPage = await hostContext.newPage();
     const hostFirstSessions = capture(hostFirstPage);
     const joinedPlayers = [];
@@ -62,22 +88,23 @@ try {
     assert.equal(metadata.resource, base + '/mcp');
     assert.ok(metadata.authorization_servers.includes(issuer));
     const discovery = await (await hostContext.request.get(issuer + '/.well-known/oauth-authorization-server')).json();
-    const hostClient = await (await hostContext.request.post(discovery.registration_endpoint, {data:{redirect_uris:[issuer+'/oauth/host-callback'], client_name:'MCP first client'}})).json();
+    const hostClient = await (await hostContext.request.post(discovery.registration_endpoint, {data:{redirect_uris:[redirect], client_name:'MCP first client'}})).json();
     const hostVerifier = randomBytes(48).toString('base64url');
     const hostState = randomBytes(24).toString('base64url');
     const hostAuthorization = new URL(discovery.authorization_endpoint);
-    hostAuthorization.search = new URLSearchParams({response_type:'code',client_id:hostClient.client_id,redirect_uri:issuer+'/oauth/host-callback',scope:'mcp:access',state:hostState,resource:base+'/mcp',code_challenge:createHash('sha256').update(hostVerifier).digest('base64url'),code_challenge_method:'S256'}).toString();
+    hostAuthorization.search = new URLSearchParams({response_type:'code',client_id:hostClient.client_id,redirect_uri:redirect,scope:'mcp:access',state:hostState,resource:base+'/mcp',code_challenge:createHash('sha256').update(hostVerifier).digest('base64url'),code_challenge_method:'S256'}).toString();
     await hostFirstPage.goto(hostAuthorization.href);
     await hostFirstPage.locator('input[name=username]').fill('host-first');
     await hostFirstPage.locator('input[name=password]').fill('strong-local-password');
     await hostFirstPage.getByRole('button',{name:'Create account'}).click();
     await hostFirstPage.getByRole('button',{name:'Allow',exact:true}).click();
-    await hostFirstPage.waitForURL(issuer+'/oauth/host-callback?**');
+    await hostFirstPage.waitForURL(redirect+'?**');
+    await hostFirstPage.getByRole('heading',{name:'Client callback'}).waitFor();
     const hostCallback = new URL(hostFirstPage.url());
     assert.equal(hostCallback.searchParams.get('state'),hostState);
     assert.equal(hostFirstSessions.length,0);
     assert.ok(!(await hostContext.cookies()).some(cookie => cookie.name === 'game_session'));
-    const hostTokenResponse = await hostContext.request.post(discovery.token_endpoint,{form:{grant_type:'authorization_code',client_id:hostClient.client_id,redirect_uri:issuer+'/oauth/host-callback',code:hostCallback.searchParams.get('code'),code_verifier:hostVerifier,resource:base+'/mcp'}});
+    const hostTokenResponse = await hostContext.request.post(discovery.token_endpoint,{form:{grant_type:'authorization_code',client_id:hostClient.client_id,redirect_uri:redirect,code:hostCallback.searchParams.get('code'),code_verifier:hostVerifier,resource:base+'/mcp'}});
     assert.equal(hostTokenResponse.status(),200);
     const hostCredentials = await hostTokenResponse.json();
     const hostFirstResult = host({url:base+'/mcp',token:hostCredentials.access_token,name:'HostFirstSmoke'});
@@ -157,18 +184,20 @@ try {
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     const state = randomBytes(24).toString('base64url');
     const hostPage = await context.newPage();
-    const registeredResponse = await context.request.post(issuer+'/oauth/register',{data:{redirect_uris:[issuer+'/oauth/host-callback'],client_name:'Local MCP host'}});
+    capture(hostPage);
+    const registeredResponse = await context.request.post(issuer+'/oauth/register',{data:{redirect_uris:[redirect],client_name:'Local MCP host'}});
     assert.equal(registeredResponse.status(),201);
     const registered = await registeredResponse.json();
     const authorize = new URL(issuer+'/oauth/authorize');
-    authorize.search = new URLSearchParams({response_type:'code',client_id:registered.client_id,redirect_uri:issuer+'/oauth/host-callback',scope:'openid mcp:access',state,resource:base+'/mcp',code_challenge:challenge,code_challenge_method:'S256'}).toString();
+    authorize.search = new URLSearchParams({response_type:'code',client_id:registered.client_id,redirect_uri:redirect,scope:'openid mcp:access',state,resource:base+'/mcp',code_challenge:challenge,code_challenge_method:'S256'}).toString();
     await hostPage.goto(authorize.href);
     await hostPage.getByRole('button',{name:'Allow',exact:true}).click();
-    await hostPage.waitForURL(issuer+'/oauth/host-callback?**');
+    await hostPage.waitForURL(redirect+'?**');
+    await hostPage.getByRole('heading',{name:'Client callback'}).waitFor();
     const callback = new URL(hostPage.url());
     assert.equal(callback.searchParams.get('state'),state);
     assert.equal(callback.searchParams.get('iss'),issuer);
-    const fields = {grant_type:'authorization_code',client_id:registered.client_id,redirect_uri:issuer+'/oauth/host-callback',code:callback.searchParams.get('code'),code_verifier:verifier,resource:base+'/mcp'};
+    const fields = {grant_type:'authorization_code',client_id:registered.client_id,redirect_uri:redirect,code:callback.searchParams.get('code'),code_verifier:verifier,resource:base+'/mcp'};
     const response = await context.request.post(issuer+'/oauth/token',{form:fields});
     assert.equal(response.status(),200);
     const credentials = await response.json();
@@ -182,6 +211,19 @@ try {
     const replay = await context.request.post(issuer+'/oauth/token',{form:fields});
     assert.equal(replay.status(),400);
     const oauthResult = host({url:oauth.mcpUrl,token:credentials.access_token,name:'OAuthSmoke'});
+    await hostPage.goto(authorize.href);
+    await hostPage.getByRole('button',{name:'Deny',exact:true}).click();
+    await hostPage.waitForURL(redirect+'?**');
+    await hostPage.getByRole('heading',{name:'Client callback'}).waitFor();
+    const deniedCallback = new URL(hostPage.url());
+    assert.equal(deniedCallback.searchParams.get('error'),'access_denied');
+    assert.equal(deniedCallback.searchParams.has('code'),false);
+    assert.equal(deniedCallback.searchParams.get('state'),state);
+    assert.equal(deniedCallback.searchParams.get('iss'),issuer);
+    const visits = await (await context.request.get(callbackOrigin+'/stats')).json();
+    assert.equal(visits.selected,3);
+    assert.equal(visits.unrelated,0);
+
     const refreshResponse = await context.request.post(issuer+'/oauth/token',{form:{client_id:registered.client_id,grant_type:'refresh_token',refresh_token:credentials.refresh_token,resource:base+'/mcp'}});
     assert.equal(refreshResponse.status(),200);
     const renewed = await refreshResponse.json();
@@ -207,7 +249,12 @@ try {
     const stillToken = host({url:token.mcpUrl,token:token.mcpToken,name:null});
     assert.ok(JSON.stringify(stillToken.player).includes('TokenSmoke'));
     assert.equal(failures.length,0,failures.join('\n'));
-    console.log(JSON.stringify({hostFirst:true,publicUrlCopiedBeforeLogin:true,browserReusedPlayer:true,darkTheme:true,responsiveViewports:4,embedded:true,openid:true,inspector:!!process.env.TEST_INSPECTOR_VERSION,registration:true,refresh:true,dual:true,token:tokenResult.login,oauth:oauthResult.login,tools:oauthResult.tools,tokenMoved:tokenResult.move,oauthMoved:oauthResult.move,codeReplayRejected:true,logoutRevoked:true,switchToToken:true,tokenUnaffected:true,browserErrors:failures.length}));
+    assert.equal(unauthenticatedConsent.length,2);
+    assert.equal(unauthenticatedResponses.length,2);
+    assert.equal(analyticsRequests.length,0);
+    assert.equal(await page.evaluate(() => 'dataLayer' in window),false);
+    assert.equal(await oauthPage.evaluate(() => 'dataLayer' in window),false);
+    console.log(JSON.stringify({oauthAnalyticsDisabled:true,expectedUnauthenticatedConsent:unauthenticatedConsent.length,crossOriginAllow:true,crossOriginDeny:true,hostFirst:true,publicUrlCopiedBeforeLogin:true,browserReusedPlayer:true,darkTheme:true,responsiveViewports:4,embedded:true,openid:true,inspector:!!process.env.TEST_INSPECTOR_VERSION,registration:true,refresh:true,dual:true,token:tokenResult.login,oauth:oauthResult.login,tools:oauthResult.tools,tokenMoved:tokenResult.move,oauthMoved:oauthResult.move,codeReplayRejected:true,logoutRevoked:true,switchToToken:true,tokenUnaffected:true,browserErrors:failures.length}));
 } finally {
     await browser.close();
 }

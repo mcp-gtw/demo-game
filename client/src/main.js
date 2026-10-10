@@ -4,6 +4,7 @@ import { BootScene } from "./scenes/BootScene.js";
 import { DPR } from "./constants.js";
 import { GalleryScene } from "./scenes/GalleryScene.js";
 import { AuthController } from "./helpers/auth.js";
+import { initializeAnalytics } from "./helpers/analytics.js";
 import { OAuthGameSocket } from "./net/OAuthGameSocket.js";
 import { GameSocket } from "./net/GameSocket.js";
 import { GameScene } from "./scenes/GameScene.js";
@@ -182,6 +183,7 @@ async function boot() {
     bootGame();
     const timer = setInterval(() => (store.phase === "game" ? clearInterval(timer) : pollInfo()), 3000);
     if (store.availableAuthMethods.length === 1 && store.availableAuthMethods[0] === "token") {
+        initializeAnalytics();
         store.selectAuthMethod("token");
     }
 }

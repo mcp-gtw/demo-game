@@ -11,7 +11,7 @@ authoritative grid world, its HTTP/WebSocket surface and a self-hosted Phaser cl
 
 The internal package name is intentionally generic (`app`) so the demo is easy to port or reuse.
 
-It requires `mcp-gtw>=0.0.10`, resolved from PyPI by the lockfile. Development, CI and Docker builds work without a sibling gateway checkout. See [docs/oauth.md](docs/oauth.md) for deployment.
+It requires `mcp-gtw>=0.0.11`, resolved from PyPI by the lockfile. Development, CI and Docker builds work without a sibling gateway checkout. See [docs/oauth.md](docs/oauth.md) for deployment.
 
 ## Documentation map
 
@@ -20,7 +20,8 @@ It requires `mcp-gtw>=0.0.10`, resolved from PyPI by the lockfile. Development, 
   and grants retain explicit client scopes. Extension points and invariants: [docs/oauth.md](docs/oauth.md).
 - **Full OAuth acceptance checklist** — [gateway checklist](https://github.com/mcp-gtw/mcp-gtw/blob/main/docs/oauth-implementation-checklist.md)
   tracks architecture, SEC/GAME/SDK/HOST/UPG requirements and external checks.
-- **CI** — the game matrix tests locked PyPI dependencies independently. The gateway OAuth
+- **CI** — the game matrix tests locked PyPI dependencies independently, and Python 3.12 also
+  gates real HTTPS cross-origin embedded consent in Chromium. The gateway OAuth
   acceptance workflow checks out all three full SHAs and runs Chrome/Inspector/Docker tests.
   See [docs/oauth.md](docs/oauth.md) and [tests/e2e/README.md](tests/e2e/README.md).
 
@@ -106,8 +107,9 @@ that exports **functions or constants** is lowercase (`helpers/format.js`, `cons
   Twitter card pointing at `public/og.png`, `application/ld+json` `VideoGame` structured data), the
   favicon set (`public/favicon.ico` + `favicon-16x16`/`favicon-32x32` PNGs + apple-touch + the
   `android-chrome-192/512` PWA icons, wired with a `site.webmanifest` whose icon `src`s are `/static/dist`
-  rooted since that is where the browser serves them), and the Google Analytics `gtag` snippet — the
-  one external script the page loads. `style.css` only makes the app fill the browser (fullscreen, no
+  rooted since that is where the browser serves them), and no executable inline scripts.
+  `helpers/analytics.js` loads the Google Analytics tag only in Token-only deployments. OAuth and
+  dual deployments load no Analytics tag and retain a self-only script CSP. `style.css` only makes the app fill the browser (fullscreen, no
   scroll, no text selection, no margins) plus the `@font-face` for the crisp Roboto text. Brand assets in
   `client/public/` are copied by Vite to `web/dist/` and served under `/static/dist/`. The landing, the
   connect windows and the HUD are all Phaser scenes.
