@@ -60,7 +60,7 @@ Unit/ASGI tests cover hostile tokens, callback/state/origin checks, one-use tick
 
 ## Embedded login on the game domain
 
-With gateway 0.0.10, `.env.oauth.example` enables Token + OAuth at `https://mcpgame.paulox.dev` without an external IdP. The issuer is that exact origin. The gateway serves `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`, `/oauth/authorize`, `/oauth/login`, `/oauth/consent`, `/oauth/token`, `/oauth/jwks` and `/oauth/revoke`. Optional `/oauth/register` supports bounded public-client DCR; the example explicitly enables it. CIMD is enabled by default for public HTTPS client metadata with DNS/peer validation and bounded fetching; private_key_jwt is not advertised.
+With gateway 0.0.11, `.env.oauth.example` enables Token + OAuth at `https://mcpgame.paulox.dev` without an external IdP. The issuer is that exact origin. The gateway serves `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`, `/oauth/authorize`, `/oauth/login`, `/oauth/consent`, `/oauth/token`, `/oauth/jwks` and `/oauth/revoke`. Optional `/oauth/register` supports bounded public-client DCR; the example explicitly enables it. CIMD is enabled by default for public HTTPS client metadata with DNS/peer validation and bounded fetching; private_key_jwt is not advertised.
 
 Set a private persistent `/data` volume owned by UID/GID 10001. `oauth.sqlite` contains real accounts, browser sessions, hashed codes/refresh identifiers and grants; `oauth.sqlite.key` contains the persistent RSA private key (0600). Back up both together. The key is generated only when missing and never put in the environment, frontend or image. Replacing it invalidates signed tokens. The browser client ID/secret are pre-registered from APP_OIDC_CLIENT_ID/APP_OIDC_CLIENT_SECRET; generate a random secret once and retain it across restarts. The browser callback is `/app/oauth/callback`.
 
@@ -72,7 +72,7 @@ Codes are short-lived and consumed atomically. Refresh tokens rotate atomically;
 
 Run `make embedded-smoke` (with TEST_CHROME if needed) to exercise the actual production AS in Chrome over local HTTPS: public URL clipboard before login, discovery, client-first signup and consent, official MCP initialize/tools/login/move, later browser login reusing that player, browser-first PKCE, DCR, refresh, code replay rejection, logout and simultaneous Token. No simulator IdP is used for this target.
 
-Build the image with `make docker-build IMAGE=mcp-gtw-game:oauth` or `docker build -t mcp-gtw-game:oauth .`. The lockfile installs gateway 0.0.10 from PyPI with verified artifact hashes. Development, CI and Docker builds do not require a sibling checkout or GATEWAY_INTEGRATION_SHA. The supplied proxy must forward `/oauth/`, `/app/` and `/.well-known/` as well as `/mcp`; keep OAuth request queries out of logs.
+Build the image with `make docker-build IMAGE=mcp-gtw-game:oauth` or `docker build -t mcp-gtw-game:oauth .`. The lockfile installs gateway 0.0.11 from PyPI with verified artifact hashes. Development, CI and Docker builds do not require a sibling checkout or GATEWAY_INTEGRATION_SHA. The supplied proxy must forward `/oauth/`, `/app/` and `/.well-known/` as well as `/mcp`; keep OAuth request queries out of logs.
 
 
 The final local container scan retains upstream Debian package alerts from the requested Python 3.14 slim base; it does not claim a zero-CVE image. The gateway's [container applicability review](https://github.com/mcp-gtw/mcp-gtw/blob/main/docs/security.md#container-audit-scope) records the affected CLI/privileged components and the tested non-root runtime. Python and npm dependencies had no known audit vulnerabilities in that run.
@@ -116,3 +116,25 @@ checks ownership and live connection count under the session lock before reclaim
 Removal revokes its grants, embedded login/code/token families and player. Browser session and
 grant expiry are still enforced on active streams and MCP requests. Explicit fresh consent can
 renew permissions, but refresh cannot recover expired or revoked access.
+
+
+## Cross-origin consent browser gate
+
+The embedded smoke starts a second real HTTPS server on a different host and port for MCP client
+callbacks. Both host-first and browser-first approval must navigate there after a single click,
+and denial must return `access_denied` without a code. The test checks the callback page, state,
+issuer, successful code exchange and zero unexpected console errors, alongside account reuse,
+refresh, replay rejection, logout and Token coexistence. Both servers use ephemeral private state,
+and no code or credential is sent to ChatGPT or another remote client.
+
+The Python 3.12 CI leg installs Chromium and runs this smoke on every PR. All supported Python
+versions still run the full unit and coverage gates. Actual authenticated ChatGPT/Claude workspace
+acceptance and production deployment remain separate checks.
+
+
+OAuth and dual game pages retain a self-only script CSP and load no Google Analytics tag. The
+Token-only deployment retains its existing Analytics measurement through a bundled bootstrap.
+Analytics page URLs exclude queries and fragments. Authorization pages remain script-free. The
+browser gate checks that OAuth game pages issue no Analytics requests, alongside zero unexpected
+console errors. Two unauthenticated BFF consent probes must return HTTP 403 and start sign-in.
+Those expected HTTP denials are checked explicitly and do not hide unrelated errors or CSP failures.

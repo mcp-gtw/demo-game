@@ -42,3 +42,17 @@ full embedded browser/host PKCE, DCR, ticket, tools and logout flow through ngin
 Distribution checks inspect both wheel and sdist for the required app/web/dist/index.html and
 assets, then compare repeated builds and run the installed game through HTTPS. `make build` builds
 the frontend before packaging. A missing bundle is a build error.
+
+
+## Cross-origin consent browser gate
+
+The embedded smoke starts a second real HTTPS server on a different host and port for MCP client
+callbacks. Both host-first and browser-first approval must navigate there after a single click,
+and denial must return `access_denied` without a code. The test checks the callback page, state,
+issuer, successful code exchange and zero unexpected console errors, alongside account reuse,
+refresh, replay rejection, logout and Token coexistence. Both servers use ephemeral private state,
+and no code or credential is sent to ChatGPT or another remote client.
+
+The Python 3.12 CI leg installs Chromium and runs this smoke on every PR. All supported Python
+versions still run the full unit and coverage gates. Actual authenticated ChatGPT/Claude workspace
+acceptance and production deployment remain separate checks.

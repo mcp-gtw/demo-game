@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 import time
 
+import httpx
+
 root = pathlib.Path(__file__).resolve().parents[2]
 fixture = pathlib.Path(__file__).parent
 for port in (19443, 19470):
@@ -80,6 +82,20 @@ with tempfile.TemporaryDirectory(prefix="oauth-local-") as temp:
                 ],
                 "game",
             ),
+            (
+                [
+                    "callback:app",
+                    "--app-dir",
+                    str(fixture),
+                    "--port",
+                    "19470",
+                    "--ssl-keyfile",
+                    str(p / "key.pem"),
+                    "--ssl-certfile",
+                    str(p / "cert.pem"),
+                ],
+                "callback",
+            ),
         ]:
             log = logs.enter_context((p / (name + ".log")).open("w"))
             children.append(
@@ -99,8 +115,26 @@ with tempfile.TemporaryDirectory(prefix="oauth-local-") as temp:
                     stderr=log,
                 )
             )
-        time.sleep(3)
-        assert all(c.poll() is None for c in children)
+        with httpx.Client(verify=False, timeout=1) as client:
+            for _ in range(100):
+                if any(child.poll() is not None for child in children):
+                    raise RuntimeError("An HTTPS integration server exited during startup")
+
+                try:
+                    ready = [
+                        client.get("https://localhost:19443/health"),
+                        client.get("https://127.0.0.1:19470/stats"),
+                    ]
+                except httpx.HTTPError:
+                    time.sleep(0.1)
+                    continue
+
+                if all(response.status_code == 200 for response in ready):
+                    break
+
+                time.sleep(0.1)
+            else:
+                raise RuntimeError("The HTTPS integration servers did not become ready")
         subprocess.run(
             ["node", str(root / "client/tests/embedded-browser-smoke.mjs")],
             cwd=root,
