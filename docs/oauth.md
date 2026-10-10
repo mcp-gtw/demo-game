@@ -16,13 +16,14 @@ Copy `.env.oauth.external.example`, replace the issuer, JWKS endpoint, client ID
 
 ## Browser flow and revocation
 
-The browser login transaction and state cookie use APP_OAUTH_LOGIN_TIMEOUT_SECONDS (600 seconds,
-maximum 1800). This allows account creation and consent without the former two-minute callback
-deadline. The deadline is absolute and expired state remains invalid even if its cookie is replayed.
-Keep this timeout aligned with the authorization server's login/consent window. The gateway 0.0.7
-embedded server still has a two-minute login window. Its separate-window fix must be published to
-PyPI before upgrading this project's dependency, and the browser timeout change alone does not
-extend that older server window.
+The browser login transaction and state cookie use `APP_OAUTH_LOGIN_TIMEOUT_SECONDS` (600 seconds,
+maximum 1800). The embedded server independently uses
+`GATEWAY_OAUTH_EMBEDDED_AUTHORIZATION_TTL_SECONDS` with the same default and maximum for login and
+consent. Keep these windows aligned. Both deadlines are absolute and expired state remains invalid
+when cookies are replayed. Refreshing the form or retrying credentials does not renew a transaction.
+Authorization codes still expire after 120 seconds by default, independently of the login window.
+Disabled account registration is hidden in the form, and forged registration requests are denied.
+Credential errors allow a retry, while expired forms explain that sign-in must start again.
 
 The BFF creates a short-lived login transaction with state, nonce and PKCE. Callback verifies the issuer response, transaction cookie, one-use state, signature, ID-token audience and nonce. Duplicate/ambiguous session and login-state cookies are rejected on HTTP and WebSocket entry. The session cookie is Secure, HttpOnly, SameSite=Lax and restricted to `/app`. SQLite stores hashes of cookie/ticket identifiers, private transaction payloads and finite expiries. New databases are created with mode 0600; keep existing databases and their directory private. Protect this database as sensitive data: PKCE verifiers exist temporarily in login payloads. Browser OAuth tokens are not sent to localStorage, clipboard, logs or the WebSocket.
 
@@ -42,7 +43,7 @@ Unit/ASGI tests cover hostile tokens, callback/state/origin checks, one-use tick
 
 ## Embedded login on the game domain
 
-With gateway 0.0.7, `.env.oauth.example` enables Token + OAuth at `https://mcpgame.paulox.dev` without an external IdP. The issuer is that exact origin. The gateway serves `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`, `/oauth/authorize`, `/oauth/login`, `/oauth/consent`, `/oauth/token`, `/oauth/jwks` and `/oauth/revoke`. Optional `/oauth/register` supports bounded public-client DCR; the example explicitly enables it. CIMD is enabled by default for public HTTPS client metadata with DNS/peer validation and bounded fetching; private_key_jwt is not advertised.
+With gateway 0.0.8, `.env.oauth.example` enables Token + OAuth at `https://mcpgame.paulox.dev` without an external IdP. The issuer is that exact origin. The gateway serves `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`, `/oauth/authorize`, `/oauth/login`, `/oauth/consent`, `/oauth/token`, `/oauth/jwks` and `/oauth/revoke`. Optional `/oauth/register` supports bounded public-client DCR; the example explicitly enables it. CIMD is enabled by default for public HTTPS client metadata with DNS/peer validation and bounded fetching; private_key_jwt is not advertised.
 
 Set a private persistent `/data` volume owned by UID/GID 10001. `oauth.sqlite` contains real accounts, browser sessions, hashed codes/refresh identifiers and grants; `oauth.sqlite.key` contains the persistent RSA private key (0600). Back up both together. The key is generated only when missing and never put in the environment, frontend or image. Replacing it invalidates signed tokens. The browser client ID/secret are pre-registered from APP_OIDC_CLIENT_ID/APP_OIDC_CLIENT_SECRET; generate a random secret once and retain it across restarts. The browser callback is `/app/oauth/callback`.
 
@@ -54,7 +55,7 @@ Codes are short-lived and consumed atomically. Refresh tokens rotate atomically;
 
 Run `make embedded-smoke` (with TEST_CHROME if needed) to exercise the actual production AS in Chrome over local HTTPS: account registration, browser PKCE, DCR host consent, official MCP initialize/tools/login/move, refresh, code replay rejection, logout and simultaneous Token. No simulator IdP is used for this target.
 
-Build the image with `make docker-build IMAGE=mcp-gtw-game:oauth` or `docker build -t mcp-gtw-game:oauth .`. The lockfile installs gateway 0.0.7 from PyPI with verified artifact hashes. Development, CI and Docker builds do not require a sibling checkout or GATEWAY_INTEGRATION_SHA. Version 0.0.6 cannot run embedded OAuth. The supplied proxy must forward `/oauth/`, `/app/` and `/.well-known/` as well as `/mcp`; keep OAuth request queries out of logs.
+Build the image with `make docker-build IMAGE=mcp-gtw-game:oauth` or `docker build -t mcp-gtw-game:oauth .`. The lockfile installs gateway 0.0.8 from PyPI with verified artifact hashes. Development, CI and Docker builds do not require a sibling checkout or GATEWAY_INTEGRATION_SHA. The supplied proxy must forward `/oauth/`, `/app/` and `/.well-known/` as well as `/mcp`; keep OAuth request queries out of logs.
 
 
 The final local container scan retains upstream Debian package alerts from the requested Python 3.14 slim base; it does not claim a zero-CVE image. The gateway's [container applicability review](https://github.com/mcp-gtw/mcp-gtw/blob/main/docs/security.md#container-audit-scope) records the affected CLI/privileged components and the tested non-root runtime. Python and npm dependencies had no known audit vulnerabilities in that run.

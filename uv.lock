@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -597,7 +597,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.143.0,<1" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1,<1" },
-    { name = "mcp-gtw", specifier = ">=0.0.7" },
+    { name = "mcp-gtw", specifier = ">=0.0.8" },
     { name = "pydantic", specifier = ">=2.14.0,<3" },
     { name = "pydantic-settings", specifier = ">=2.15.0,<3" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.15.1,<3" },
@@ -611,7 +611,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "mcp-gtw"
-version = "0.0.7"
+version = "0.0.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -624,9 +624,9 @@ dependencies = [
     { name = "referencing" },
     { name = "uvicorn", extra = ["standard"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1e/73/bdaf77aab8bf764408f7332c219f051932d3f2b1850552bd28a2b04b92de/mcp_gtw-0.0.7.tar.gz", hash = "sha256:a6e613cdd071b39e71a5f854448501ee3faa1aebcd2508da86c469ca79d4f4eb", size = 501948, upload-time = "2026-10-10T02:12:19.492Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/dd/c0bde50172c8473e5e4c0b18618ea6c206de80bb4822152cc4248732b7cf/mcp_gtw-0.0.8.tar.gz", hash = "sha256:663194851bc91edf81125757273489e4447841d2e292e0a14e0887d3ee1ba0aa", size = 504673, upload-time = "2026-10-10T02:58:41.419Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/52/66/4f786fa479a8b8f755572bdb80f0430e2cb1f63774b3082852659670e18f/mcp_gtw-0.0.7-py3-none-any.whl", hash = "sha256:bc541908c97f9bbd5593343d61710c8ff8f3739af661bc77805571596677c5d6", size = 119167, upload-time = "2026-10-10T02:12:17.886Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/37/5a2262f0405f5c028459d47e1bd4ad9f4f5f122e96ca6a9e57e819c39720/mcp_gtw-0.0.8-py3-none-any.whl", hash = "sha256:0b51f93714fee7256340af1a29937206a4e418bff66b82a2192306bf5c6b8dfa", size = 119691, upload-time = "2026-10-10T02:58:40.331Z" },
 ]
 
 [[package]]
