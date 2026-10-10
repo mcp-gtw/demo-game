@@ -498,7 +498,7 @@ class AppGateway(Gateway):
     def _session_disconnect(self, session: Session) -> None:
         session.connections -= 1
 
-        if session.connections <= 0:
+        if session.connections <= 0 and self._sessions.get(session.channel_id) is session:
             delay = max(self.app_settings.session_grace_seconds, self._mcp_idle_remaining(session))
             self.schedule_idle_teardown(session, delay)
 

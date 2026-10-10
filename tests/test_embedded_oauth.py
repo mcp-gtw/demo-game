@@ -468,6 +468,8 @@ async def test_signout_removes_connected_oauth_without_touching_token_session(em
     gateway._session_connect(owned)
     assert owned.teardown is None
     await gateway.revoke_oauth_channel(owned.channel_id)
+    gateway._session_disconnect(owned)
+    assert owned.teardown is None
     assert not gateway._sessions
     assert await gateway.authorization_server.verify(tokens["access_token"], BASE + "/mcp") is None
     token = await gateway._acquire_session("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")

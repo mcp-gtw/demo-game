@@ -296,3 +296,35 @@ it("unauthorized OAuth never requires a callback to keep credentials private", a
     expect(FakeWebSocket.instances).toHaveLength(0);
     socket.disconnect();
 });
+
+
+it("a denied obsolete ticket cannot sign out a newer connection", async () => {
+    let resolve;
+    const fetcher = vi.fn().mockReturnValueOnce(new Promise(done => { resolve = done; }))
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ ticket: "current" }) });
+    const onAuthRequired = vi.fn();
+    const socket = new OAuthGameSocket("wss://host/app/stream", { onAuthRequired }, fetcher);
+    socket.connect();
+    await settle();
+    socket.connect();
+    await settle();
+    resolve({ ok: false, status: 403 });
+    await settle();
+    expect(onAuthRequired).not.toHaveBeenCalled();
+    expect(lastSocket().url).toBe("wss://host/app/stream?ticket=current");
+    expect(socket.stopped).toBe(false);
+    socket.disconnect();
+});
+
+it("a denied abandoned OAuth ticket cannot clear the selected Token identity", async () => {
+    let resolve;
+    const onAuthRequired = vi.fn();
+    const socket = new OAuthGameSocket("wss://host/app/stream", { onAuthRequired }, () => new Promise(done => { resolve = done; }));
+    socket.connect();
+    await settle();
+    socket.disconnect();
+    resolve({ ok: false, status: 401 });
+    await settle();
+    expect(onAuthRequired).not.toHaveBeenCalled();
+    expect(socket.reconnectTimer).toBeNull();
+});

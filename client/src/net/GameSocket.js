@@ -37,7 +37,7 @@ export class GameSocket {
 
         if (this.connectionUrl) {
             const generation = ++this.generation;
-            Promise.resolve().then(() => this.connectionUrl()).then((url) => {
+            Promise.resolve().then(() => this.connectionUrl(generation)).then((url) => {
                 if (!this.stopped && generation === this.generation) {
                     this.#open(url);
                 }

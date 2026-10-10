@@ -167,7 +167,8 @@ allowed Origin, an unexpired cookie, explicit existing browser consent and a liv
 It returns only `{ "authorized": true }` with `Cache-Control: no-store`, never tokens or account
 identifiers. It does not write grants, extend a cookie deadline or recreate a channel. Re-selecting OAuth with
 an already consented cookie is idempotent and cannot restore revoked MCP client grants. Ticket
-HTTP 401/403 ends reconnection and returns to the authentication menu. Temporary server errors, network failures
+HTTP 401/403 for the current connection ends reconnection and returns to the authentication menu.
+Responses from stopped or superseded connections cannot clear a newer selected identity. Temporary server errors, network failures
 and rate limits leave the method menu available for retry without redirecting into another login flow.
 
 | Scenario | Required behavior and verification |
