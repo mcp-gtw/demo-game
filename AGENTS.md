@@ -439,6 +439,10 @@ Every rule is enforced on the server. This is the index so nothing is duplicated
 
 ## Conventions
 
+Wait for a dependency version to be published to PyPI or npm before updating another project's
+dependency. Consumer dependencies must use published registry versions, never Git commit hashes,
+branches, sibling source checkouts or locally built replacement wheels.
+
 `uv` + ruff `line-length = 100` for Python (**100% branch coverage gate** over the whole `app`
 package); `vite` + `vitest` for the client (one class per file, **100% coverage** over helpers/net and LoginScene
  — the `vitest.config.js` gate does not cover the Phaser view layer, which is guarded by the build
